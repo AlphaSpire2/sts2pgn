@@ -1,0 +1,22 @@
+# Alternate repository metadata used in the managed workspace, where .git is read-only.
+.git-data/
+
+# Build output
+bin/
+obj/
+out/
+TestResults/
+
+# IDE and user state
+.idea/
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+
+# Local game/install configuration
+*.local.props
+
+# The decompile is a read-only local reference, not project source.
+/decomp
