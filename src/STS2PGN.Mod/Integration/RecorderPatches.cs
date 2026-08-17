@@ -360,13 +360,17 @@ internal static class RelicOfferPatch
 internal static class CrystalSphereStartPatch
 {
     [HarmonyPostfix]
-    private static void Postfix(CrystalSphereMinigame __instance, Player owner)
+    private static void Postfix(
+        CrystalSphereMinigame __instance,
+        Player owner,
+        MegaCrit.Sts2.Core.Random.Rng rng)
     {
         RecorderService.ExecuteSafely("capturing Crystal Sphere board", () =>
             RecorderService.TryRecord("event.crystal_sphere.start", new
         {
             grid = new { width = __instance.GridSize.X, height = __instance.GridSize.Y },
             divinations = __instance.DivinationCount,
+            rng = new { seed = rng.Seed, counter = rng.Counter },
             initial_tool = ToolName(__instance.CrystalSphereTool),
             placed_all_items = __instance.PlacedAllItems,
             cells = Enumerable.Range(0, __instance.GridSize.X)

@@ -1,6 +1,6 @@
 # Action Coverage Ledger
 
-Status: Phase 3 implementation audit against the current `decomp/` snapshot and `../sts2mcp` reference mod. Integration points marked implemented still require an in-game smoke test against the matching assemblies.
+Status: Phase 3 recorder implementation is complete against the current `decomp/` snapshot and `../sts2mcp` reference mod. Full mod compilation and an in-game smoke test still require the matching game assemblies.
 
 This ledger maps semantic STS2PGN records to authoritative game integration points. Line numbers are intentionally omitted because the decompile changes every patch. Paths and member names are the review anchors.
 
@@ -9,7 +9,7 @@ Legend:
 - **Event**: usable public event exists.
 - **Direct**: usable public method or action type exists; a narrow Harmony postfix/prefix may be required to observe it.
 - **Derived**: record is derived from an authoritative state transition rather than a single input method.
-- **Research**: exact accepted/settled hook must be confirmed during recorder implementation.
+- **Excluded**: not a semantic simulator input for the supported single-player trace.
 
 ## Lifecycle and navigation
 
@@ -36,11 +36,11 @@ Legend:
 | `combat.discard_potion` | `NetDiscardPotionGameAction` | Player slot, potion slot/model, combat flag. | Event |
 | `combat.end_turn` | `NetEndPlayerTurnAction` | Player slot and turn number. | Event |
 | `combat.undo_end_turn` | `NetUndoEndPlayerTurnAction` | Player slot and turn number. | Event |
-| internal enemy-turn readiness | `NetReadyToBeginEnemyTurnAction` | Normally automatic; retain only if needed for exact ordering. | Research |
+| internal enemy-turn readiness | `NetReadyToBeginEnemyTurnAction` | Deterministic automatic synchronization, not a player decision. | Excluded |
 | action resume | `ActionQueueSet.ActionResumed` | Paused action ID. Internal replay primitive, not normally semantic movetext. | Event |
 | deterministic hook action | `GenericHookGameAction` | Hook ID, owner, action type. Internal replay primitive; simulator normally models its effects. | Event |
 
-Settled-state observation will be based on `ActionExecutor` completion plus player-choice/queue quiescence. The exact signal is a Phase 3/4 audit item.
+Settled-state observation will be based on `ActionExecutor` completion plus player-choice/queue quiescence. That projection and quiescence implementation belongs to Phase 4; Phase 3 records the accepted inputs in execution order.
 
 ## Player choices
 
@@ -48,12 +48,12 @@ Settled-state observation will be based on `ActionExecutor` completion plus play
 
 | STS2PGN kind | Net choice type | Notes | Status |
 |---|---|---|---|
-| `choice.cards` | canonical/combat/deck/mutable card | Preserve ordered selected IDs and card fingerprints. | Event |
+| `choice.cards` | canonical/combat/deck/mutable card | Preserve ordered selected IDs and portable card fingerprints, including deck/combat indexes. | Event |
 | `choice.player` | player | Convert network ID to stable player slot. | Event |
-| `choice.index` | index | Include offered-choice fingerprints so index meaning can be validated. | Event |
-| `choice.bundle` | usually index/card collection | Confirm exact game representation per screen. | Research |
-| `choice.confirm` | screen-specific | Record only when confirmation is distinct from the synchronized choice. | Research |
-| `choice.cancel` | empty/nullable result or screen-specific | Distinguish meaningful cancellation from presentation input. | Research |
+| `choice.index` | index | Includes offered fingerprints from card grids, bundles, relic screens, and every card-reward iteration. | Event/Direct |
+| bundle choice | index | Represented by `choice.index` with `offered.context = card_bundle`; no separate wire kind is needed. | Direct |
+| confirmation | screen-specific | Presentation input collapses into the authoritative synchronized choice result. | Excluded |
+| cancellation | empty/nullable result | Represented by an empty synchronized result; intermediate UI back-navigation is presentation-only. | Event |
 
 The reference implementations in `../sts2mcp/McpMod.Actions.cs` cover card grids, bundles, combat selection, relic selection, confirmation, and cancellation and will be used as a UI-surface audit list.
 
@@ -63,11 +63,11 @@ The reference implementations in `../sts2mcp/McpMod.Actions.cs` cover card grids
 |---|---|---|---|
 | `event.choose` | `Core.Multiplayer.Game/EventSynchronizer.cs`: `ChooseLocalOption`, `PlayerVoteChanged` | Patch/observe the accepted option; store index plus event and option semantic IDs/text hash. | Direct/Event |
 | `event.advance` | `NAncientEventLayout.OnDialogueHitboxClicked` | Record each progression-bearing dialogue advance. | Direct |
-| `event.crystal_sphere.start` | `CrystalSphereMinigame` constructor | Record the complete generated grid, item list and cell-to-item mapping because the event is nondeterministic. | Direct |
+| `event.crystal_sphere.start` | `CrystalSphereMinigame` constructor | Record the complete generated grid, item list, cell-to-item mapping, and post-generation RNG seed/counter because the event is nondeterministic. | Direct |
 | `event.crystal_sphere.set_tool` | `CrystalSphereMinigame.SetTool` | Record the semantic `small` or `big` tool. | Direct |
 | `event.crystal_sphere.click` | `CrystalSphereMinigame.CellClicked` | Record logical cell coordinates, active tool, and divinations remaining before the click. | Direct |
 | `event.crystal_sphere.proceed` | `NCrystalSphereScreen.OnProceedButtonPressed` | Record the explicit progression action without duplicating generic room proceed. | Direct |
-| `rest.choose` | `RestSiteSynchronizer.BeforePlayerOptionChosen`, `AfterPlayerOptionChosen` | Record canonical option identity and success after synchronization. | Event |
+| `rest.choose` / `rest.resolve` | `RestSiteSynchronizer.BeforePlayerOptionChosen`, `AfterPlayerOptionChosen` | Emit the option before nested card/player choices and correlate its eventual success afterward. | Event |
 
 Nested rooms created by events are captured by the normal room stack and lifecycle events, not invented as separate event actions.
 
@@ -75,9 +75,9 @@ Nested rooms created by events are captured by the normal room stack and lifecyc
 
 | STS2PGN kind | Authoritative source | Strategy | Status |
 |---|---|---|---|
-| `reward.claim` | `RewardsSetSynchronizer.SelectLocalReward` | Snapshot reward type/content before mutation and emit only when its task succeeds. | Direct |
-| `reward.skip` | `RewardsSetSynchronizer.SkipLocalRewardsSet` and `BeforeLeavingRoom` | Distinguish explicit skip from leaving terminal room rewards. | Direct |
-| `reward.choose_card` | card reward screen plus resulting `PlayerChoiceReceived`/reward sync | Store offered cards and chosen model/card identity. | Event/Research |
+| `reward.claim` / `reward.resolve` | private accepted `RewardsSetSynchronizer.SelectRewardForPlayer(RewardsSetState, Reward)` | Emit set ID, reward index, portable reward contents, and offered cards before nested choice; correlate success afterward. | Direct |
+| `reward.skip` | private `SkipRewardsSetOnStackTopForPlayer` | Captures explicit skip while `BeforeLeavingRoom` automatic cleanup remains excluded. | Direct |
+| card reward choice | `PlayerChoiceReceived` plus `ReserveChoiceId` | `choice.index` stores every generated offered-card fingerprint and skip/reroll alternatives. | Event/Direct |
 | obtained/skipped card | `RewardSynchronizer.SyncLocalObtainedCard` / `SyncLocalSkippedCard` | Outcome validation; avoid duplicating the player action. | Direct |
 | obtained/skipped relic | corresponding `RewardSynchronizer` methods | Outcome validation. | Direct |
 | obtained/skipped potion | corresponding `RewardSynchronizer` methods | Outcome validation, including full-belt decisions. | Direct |
@@ -89,11 +89,11 @@ Nested rooms created by events are captured by the normal room stack and lifecyc
 
 | STS2PGN kind | Authoritative source | Strategy | Status |
 |---|---|---|---|
-| `shop.purchase` | `Core.Entities.Merchant/MerchantEntry.cs`: `OnTryPurchaseWrapper` | Snapshot entry type/model/cost before mutation and emit only when its task succeeds. | Direct |
-| `shop.remove_card` | `MerchantCardRemovalEntry.OnTryPurchaseWrapper` plus `PlayerChoiceReceived` | Record cost only on success; the selected deck card is captured by the synchronized choice. | Direct/Event |
-| `shop.leave` | merchant room proceed path | Record when required to advance the trace. | Research |
+| `shop.purchase` / `shop.purchase.resolve` | `Core.Entities.Merchant/MerchantEntry.cs`: `OnTryPurchaseWrapper` | Reproduce wrapper validation, then emit portable type/model/cost before effects and correlate the outcome. | Direct |
+| `shop.remove_card` / `shop.remove_card.resolve` | `OneOffSynchronizer.DoLocalMerchantCardRemoval` plus `PlayerChoiceReceived` | Emit cost/cancelability before the deck choice; selected deck index/fingerprint follows; outcome is correlated afterward. | Direct/Event |
+| shop/rest close | proceed button opens the map | Presentation-only; the following authoritative `map.choose` advances the run. | Excluded |
 
-Failed purchases do not mutate the run and are not required for simulator replay. They may be retained later as optional annotations, never as authoritative actions.
+Clicks rejected by wrapper validation (out of stock or insufficient gold) are not recorded. An accepted operation that later returns false is recorded with `success: false` because cancellation or a full inventory can affect the interaction sequence.
 
 ## Special and control surfaces from STS2 MCP
 
@@ -101,15 +101,15 @@ The reference mod exposes additional progression controls that must be audited e
 
 | Reference action | Proposed representation | Status |
 |---|---|---|
-| `advance_dialogue` | `event.advance` when progression-bearing | Research |
-| `proceed` | `room.proceed` | Research |
-| `select_card`, `confirm_selection`, `cancel_selection` | `choice.*` plus synchronized result | Research |
-| `select_bundle`, confirm/cancel bundle | `choice.bundle` | Research |
-| `select_relic`, `skip_relic_selection` | `choice.relic` or treasure records | Research |
+| `advance_dialogue` | `event.advance` for ancient-event dialogue | Direct |
+| `proceed` | `room.proceed` for terminal rewards; Crystal Sphere has its specific record; rest/shop map opening is presentation-only | Direct/Excluded |
+| `select_card`, confirm/cancel selection | final `choice.cards` or `choice.index` synchronized result | Event |
+| `select_bundle`, confirm/cancel bundle | `choice.index` with bundle fingerprints | Direct/Event |
+| `select_relic`, `skip_relic_selection` | `choice.index` with relic fingerprints and an empty index list for skip | Direct/Event |
 | `crystal_sphere_set_tool` | `event.crystal_sphere.set_tool` | Direct |
 | `crystal_sphere_click_cell` | `event.crystal_sphere.click` | Direct |
 | `crystal_sphere_proceed` | `event.crystal_sphere.proceed` | Direct |
-| tutorial/modal dismissal | control record only if it gates replay | Research |
+| tutorial/modal dismissal | UI/profile progression outside semantic simulator state | Excluded |
 | non-interactive mode, menu/profile/lobby actions | excluded from run trace | Excluded |
 
 ## Observation coverage
@@ -128,10 +128,10 @@ The recorder must project enough authoritative state to validate effects that ar
 
 ## Audit exit criteria
 
-Before recorder Phase 3 is complete:
+Phase 3 implementation exit criteria:
 
 1. Every decision exposed by the reference MCP during an active run is mapped or explicitly excluded.
-2. Every mapped action has an accepted-action hook and a settled-state hook.
+2. Every mapped input has an accepted-action hook; settled state projection is explicitly Phase 4.
 3. Duplicate signals from UI, synchronizers, action queues, and reward outcomes are deduplicated.
-4. A seeded smoke run exercises every supported action family.
-5. All remaining **Research** rows are resolved, narrowed to an explicit limitation, or moved to a later format version.
+4. A seeded smoke run exercises every supported action family once matching STS2 assemblies are available.
+5. Remaining research is limited to Phase 4 observation boundaries.

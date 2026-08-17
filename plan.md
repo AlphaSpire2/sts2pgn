@@ -4,7 +4,8 @@
 
 - Phase 1 completed: repository scaffold, mod build contract, format proposal, replay contract, and action-coverage ledger.
 - Phase 2 completed: portable trace model, append-oriented builder, streaming parser, deterministic writer, validation, canonical JSON/SHA-256 hashing, forward-compatible unknown records, crash-prefix recovery, and automated tests.
-- Phase 3 in progress: durable append writer and the authoritative recorder source are implemented against the current decompile. Compilation and an in-game smoke run remain pending until the STS2 game assemblies are available.
+- Phase 3 implementation completed: the recorder captures the supported single-player decision surface, writes portable fingerprints and correctly ordered nested operations, handles Crystal Sphere explicitly, durably flushes each record, and finalizes results atomically. Full mod compilation and an in-game smoke run remain pending until matching STS2 game assemblies are available.
+- Phase 4 is next: authoritative portable observations and simulator divergence checkpoints.
 
 ## Goal
 

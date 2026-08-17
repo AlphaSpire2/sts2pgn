@@ -93,7 +93,7 @@ internal static class RecorderService
     {
         ExecuteSafely("capturing room proceed", () =>
         {
-            if (_state?.CurrentRoom?.ModelId?.Entry != "CRYSTAL_SPHERE")
+            if (_state?.CurrentRoom is { } room && room.ModelId?.Entry != "CRYSTAL_SPHERE")
             {
                 TryRecord("room.proceed", new { }, LocalPlayerId());
             }
@@ -160,7 +160,7 @@ internal static class RecorderService
 
         TryRecord("reward.resolve", new
         {
-            action_sequence = actionSequence,
+            action_sequence = actionSequence.Value,
             success = succeeded,
         }, playerId);
     }
@@ -562,6 +562,10 @@ internal static class RecorderService
         if (_session is null)
         {
             _state = null;
+            RoomStack.Clear();
+            ChoiceOffers.Clear();
+            ActiveCardRewards.Clear();
+            PendingRestActions.Clear();
             return;
         }
 

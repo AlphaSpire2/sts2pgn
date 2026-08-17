@@ -48,10 +48,14 @@ verify supported format/projection versions
 initialize simulator from run.start portable state
 
 for each subsequent record:
-    if record is an action:
+    if record is an initiating action or nested choice:
         verify expected location and object fingerprints
         apply the action
         settle deterministic automatic effects
+
+    if record is a resolve record:
+        verify it references the matching earlier initiating action
+        verify the simulator produced the recorded success/failure
 
     if record is state.observe:
         project and canonicalize simulator state

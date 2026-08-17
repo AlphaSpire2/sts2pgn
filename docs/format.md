@@ -148,15 +148,25 @@ Version 1 reserves these namespaces:
 | `room` | `room.enter`, `room.exit`, `room.proceed` |
 | `map` | `map.choose` |
 | `combat` | `combat.play_card`, `combat.use_potion`, `combat.discard_potion`, `combat.end_turn`, `combat.undo_end_turn` |
-| `choice` | `choice.cards`, `choice.bundle`, `choice.relic`, `choice.player`, `choice.index`, `choice.confirm`, `choice.cancel` |
+| `choice` | `choice.cards`, `choice.player`, `choice.index` (with an `offered` context for index-based card, bundle, relic, and reward selections) |
 | `event` | `event.choose`, `event.advance`, `event.special` |
-| `rest` | `rest.choose` |
-| `shop` | `shop.purchase`, `shop.remove_card`, `shop.leave` |
-| `reward` | `reward.claim`, `reward.skip`, `reward.choose_card` |
+| `rest` | `rest.choose`, `rest.resolve` |
+| `shop` | `shop.purchase`, `shop.purchase.resolve`, `shop.remove_card`, `shop.remove_card.resolve` |
+| `reward` | `reward.claim`, `reward.resolve`, `reward.skip` |
 | `treasure` | `treasure.choose_relic`, `treasure.skip_relic` |
 | `state` | `state.observe` |
 
 Automatic game effects are represented in the following observation, not as player actions. Later versions may add optional explanatory effect records, but simulators must not require them to replay version 1.
+
+Operations that suspend for a nested synchronized choice use a strict three-part order:
+
+```text
+N   reward.claim     {"data":{"set_id":0,"reward_index":2,...}}
+N+1 choice.index     {"data":{"choice_id":4,"indexes":[1],"offered":{...}}}
+N+2 reward.resolve   {"data":{"action_sequence":N,"success":true}}
+```
+
+The initiating record is the action a simulator applies. Nested `choice.*` records answer choices opened while that action is suspended. A `*.resolve` record validates the eventual outcome and must reference its earlier initiating record through `data.action_sequence`; it does not apply the action a second time. The same rule covers rest choices, merchant card removal, and ordinary shop purchases that trigger follow-up choices.
 
 ## State observations
 

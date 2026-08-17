@@ -5,7 +5,7 @@ STS2PGN records Slay the Spire 2 runs as deterministic, human-readable traces in
 The long-term purpose is simulator conformance testing: record a run in the real game, feed the resulting `.sts2pgn` file to an external simulator, replay the same decisions, and identify the first state difference between the simulator and STS2.
 
 > [!IMPORTANT]
-> Phase 3 recorder implementation is in progress. The portable core and durable append writer are tested; the game-coupled recorder has been implemented against the current decompile but still needs to be compiled and smoke-tested with the STS2 assemblies.
+> Phase 3 recorder implementation is complete against the current decompile. The portable core and durable append/finalization path are tested; the game-coupled assembly still needs to be compiled and smoke-tested with matching STS2 assemblies.
 
 ## Architecture
 
@@ -108,7 +108,9 @@ The output directory is configured in `config.json`, installed beside `STS2_PGN.
 
 The configuration is read when the mod initializes, so restart the game after changing it.
 
-The recorder currently captures the exact STS2 save snapshot, run/room/act lifecycle, map movement, combat actions, synchronized player choices, event and rest choices, rewards, treasure, successful shop purchases, progression controls, and Crystal Sphere interactions. Crystal Sphere records its complete generated 11×11 board before recording tool changes and logical cell coordinates, because STS2 marks that minigame as nondeterministic.
+The recorder captures the exact STS2 save snapshot, run/room/act lifecycle, map movement, combat actions, synchronized player choices, event and rest choices, rewards, treasure, shop operations, progression controls, and Crystal Sphere interactions. Asynchronous actions are written before any nested choice and followed by a correlated resolve record. Cards, rewards, model IDs, enums, actors, and offered index choices use portable semantic fingerprints. Crystal Sphere records its complete generated 11×11 board and post-generation RNG position before tool changes and logical cell coordinates because STS2 marks that minigame as nondeterministic.
+
+Each accepted record is appended and flushed immediately. A clean run end writes the authoritative terminal result, then atomically updates the PGN-style `Result` header. An interrupted run remains a strictly parseable prefix ending in exactly one newline.
 
 ## Core library usage
 

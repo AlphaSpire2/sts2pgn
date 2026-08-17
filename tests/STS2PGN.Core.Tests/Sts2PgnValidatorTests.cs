@@ -134,6 +134,20 @@ public sealed class Sts2PgnValidatorTests
         Assert.Contains(validation.Errors, issue => issue.Code == "duplicate_resolve");
     }
 
+    [Fact]
+    public void ValidatorRequiresBooleanResolveOutcome()
+    {
+        RunRecord record = TestRecordFactory.CreateBuilder()
+            .AppendJson("run.start", "{\"data\":{}}")
+            .AppendJson("shop.remove_card", "{\"data\":{\"cost\":75}}")
+            .AppendJson("shop.remove_card.resolve", "{\"data\":{\"action_sequence\":2}}")
+            .Build();
+
+        Sts2PgnValidationResult validation = Sts2PgnValidator.Validate(record);
+
+        Assert.Contains(validation.Errors, issue => issue.Code == "invalid_resolve_success");
+    }
+
     private static RunRecordEntry CreateEntry(long sequence, string kind, string json)
     {
         using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(json);

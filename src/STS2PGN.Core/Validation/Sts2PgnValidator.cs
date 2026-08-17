@@ -286,6 +286,16 @@ public static class Sts2PgnValidator
                 location);
         }
 
+        if (!data.TryGetProperty("success", out JsonElement success)
+            || success.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            AddError(
+                issues,
+                "invalid_resolve_success",
+                $"{entry.Kind} requires a boolean data.success value.",
+                location);
+        }
+
         if (!resolvedActions.Add(actionSequence))
         {
             AddError(
