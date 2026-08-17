@@ -5,8 +5,8 @@
 - Phase 1 completed: repository scaffold, mod build contract, format proposal, replay contract, and action-coverage ledger.
 - Phase 2 completed: portable trace model, append-oriented builder, streaming parser, deterministic writer, validation, canonical JSON/SHA-256 hashing, forward-compatible unknown records, crash-prefix recovery, and automated tests.
 - Phase 3 completed and trace-validated with recorder 0.4.2: the recorder captures the supported single-player decision surface, writes portable fingerprints and correctly ordered nested operations, handles Crystal Sphere explicitly, durably flushes each record, and finalizes results atomically.
-- Phase 4 is the active implementation gate: recorder 0.5.1 implements `run_start.core` and its initial `state.observe`, but still needs generated acts/maps, current room and offered choices, combat state, and observations after settled actions, turns, room/reward/act boundaries, and run end.
-- Phase 5 portable foundation completed: the Core provides an ordered replay timeline, simulator-adapter contract, canonical state comparison, and first-divergence/result reporting. Further STS2-coupled playback is paused until the Phase 4 observation contract above is implemented and trace-validated.
+- Phase 4 implementation completed in recorder 0.6.0: `run_start.core` and `run.core` cover generated acts/maps, rooms and offered choices, player state, live combat, settled actions, turns, reward/shop/rest boundaries, act transitions, and run end. A fresh in-game trace validation remains an acceptance task for Phase 6 because matching game assemblies are not available in this workspace.
+- Phase 5 portable foundation completed: the Core provides an ordered replay timeline, simulator-adapter contract, canonical state comparison, and first-divergence/result reporting. Game-coupled playback can now build on the completed Phase 4 projection contract.
 
 ## Goal
 
@@ -254,6 +254,8 @@ Deliverable: a game-independent library that can create, parse, validate, and ro
 Deliverable: complete `.sts2pgn` recording for supported single-player runs.
 
 ### Phase 4: Authoritative observations and determinism validation
+
+**Implementation complete in recorder 0.6.0.** The remaining seeded full-run smoke validation is tracked under Phase 6 and requires the matching STS2 build.
 
 Implementation order for the current Phase 4 gate:
 

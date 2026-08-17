@@ -5,7 +5,7 @@ STS2PGN records Slay the Spire 2 runs as deterministic, human-readable traces in
 The long-term purpose is simulator conformance testing: record a run in the real game, feed the resulting `.sts2pgn` file to an external simulator, replay the same decisions, and identify the first state difference between the simulator and STS2.
 
 > [!IMPORTANT]
-> Phase 3 is trace-validated. Recorder 0.5.1 also captures accepted direct end-turn calls used by STS2 MCP single-player. Phase 4 currently has only the run-start observation and must add generated map, room, choice, combat, settled-action, boundary, and terminal scopes before in-game Phase 5 playback can be meaningful. The game-coupled assembly still needs to be built and smoke-tested with matching STS2 assemblies.
+> Phase 4 is implemented in recorder 0.6.0. Traces now contain a complete portable run projection at run start and authoritative observations for generated maps, rooms, choices, rewards, combat turns, settled actions, act transitions, and run end. The game-coupled assembly still needs to be built and smoke-tested with matching STS2 assemblies.
 
 ## Architecture
 
@@ -110,6 +110,8 @@ The configuration is read when the mod initializes, so restart the game after ch
 
 The recorder captures the exact STS2 save snapshot, run/room/act lifecycle, map movement, combat actions, synchronized player choices, event and rest choices, rewards, treasure, shop operations, progression controls, and Crystal Sphere interactions. Asynchronous actions are written before any nested choice and followed by a correlated resolve record. Cards, rewards, model IDs, enums, actors, and offered index choices use portable semantic fingerprints. Crystal Sphere records its complete generated 11×11 board and post-generation RNG position before tool changes and logical cell coordinates because STS2 marks that minigame as nondeterministic.
 
+Recorder 0.6.0 also writes full `run.core` observations as the run progresses. These include generated acts and map topology, current room stack and decision offers, player inventories and RNG state, and complete combat state. Observations are emitted only at explicit completion signals: action completion, map generation, room/act events, completed event/reward/rest/shop tasks, combat turn events, and run termination.
+
 Each accepted record is appended and flushed immediately. A clean run end writes the authoritative terminal result, then atomically updates the PGN-style `Result` header. An interrupted run remains a strictly parseable prefix ending in exactly one newline.
 
 ## Core library usage
@@ -176,7 +178,7 @@ adapter lifecycle and divergence format.
 
 ## Format status
 
-The version-one text grammar and core codec are implemented. Projection version 1 is under active development: `run_start.core` is implemented, while later initialization, room, reward, turn, and combat scopes remain pending. State schemas may still change without migration support until Phase 4 declares version 1 stable. After that, incompatible grammar changes require a new `FormatVersion`, while comparison-schema changes require a new `projection_version`.
+The version-one text grammar, core codec, and state projection are implemented. Projection version 1 defines `run_start.core` and the live `run.core` schema. Incompatible grammar changes require a new `FormatVersion`; incompatible state-schema or comparison changes require a new `projection_version`.
 
 The authoritative design documents are:
 

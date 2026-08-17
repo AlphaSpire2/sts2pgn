@@ -1,6 +1,6 @@
 # Action Coverage Ledger
 
-Status: Phase 3 recorder implementation is complete against the current `decomp/` snapshot and `../sts2mcp` reference mod. Full mod compilation and an in-game smoke test still require the matching game assemblies.
+Status: Phase 3 action capture and Phase 4 authoritative observations are implemented against the current `decomp/` snapshot and `../sts2mcp` reference mod. Full mod compilation and an in-game smoke test still require the matching game assemblies.
 
 This ledger maps semantic STS2PGN records to authoritative game integration points. Line numbers are intentionally omitted because the decompile changes every patch. Paths and member names are the review anchors.
 
@@ -40,7 +40,7 @@ Legend:
 | action resume | `ActionQueueSet.ActionResumed` | Paused action ID. Internal replay primitive, not normally semantic movetext. | Event |
 | deterministic hook action | `GenericHookGameAction` | Hook ID, owner, action type. Internal replay primitive; simulator normally models its effects. | Event |
 
-The Phase 4 run-start checkpoint is implemented because that boundary is synchronously settled. Later settled-state observations will be based on `ActionExecutor` completion plus player-choice/queue quiescence; Phase 3 records remain the accepted inputs in execution order.
+Phase 4 observations use `ActionExecutor.AfterActionExecuted` for ordinary queued actions. Map movement, end turn, act transitions, event choices, and asynchronous reward/rest/shop operations deliberately use their later domain-specific completion events instead, because the generic action callback is too early for those transitions.
 
 ## Player choices
 
@@ -63,9 +63,9 @@ The reference implementations in `../sts2mcp/McpMod.Actions.cs` cover card grids
 |---|---|---|---|
 | `event.choose` | `Core.Multiplayer.Game/EventSynchronizer.cs`: `ChooseLocalOption`, `PlayerVoteChanged` | Patch/observe the accepted option; store index plus event and option semantic IDs/text hash. | Direct/Event |
 | `event.advance` | `NAncientEventLayout.OnDialogueHitboxClicked` | Record each progression-bearing dialogue advance. | Direct |
-| `event.crystal_sphere.start` | `CrystalSphereMinigame` constructor | Record the complete generated grid, item list, cell-to-item mapping, and post-generation RNG seed/counter because the event is nondeterministic. | Direct |
-| `event.crystal_sphere.set_tool` | `CrystalSphereMinigame.SetTool` | Record the semantic `small` or `big` tool. | Direct |
-| `event.crystal_sphere.click` | `CrystalSphereMinigame.CellClicked` | Record logical cell coordinates, active tool, and divinations remaining before the click. | Direct |
+| `event.crystal_sphere.start` | `CrystalSphereMinigame` constructor | Record and observe the complete generated grid, item list, cell-to-item mapping, and post-generation RNG seed/counter because the event is nondeterministic. | Direct |
+| `event.crystal_sphere.set_tool` | `CrystalSphereMinigame.SetTool` | Record the semantic `small` or `big` tool and observe the updated full minigame state. | Direct |
+| `event.crystal_sphere.click` | `CrystalSphereMinigame.CellClicked` | Record logical cell coordinates, active tool, and divinations remaining before the click; await cell clearing/reward effects before observing the updated board. | Direct |
 | `event.crystal_sphere.proceed` | `NCrystalSphereScreen.OnProceedButtonPressed` | Record the explicit progression action without duplicating generic room proceed. | Direct |
 | `rest.choose` / `rest.resolve` | `RestSiteSynchronizer.BeforePlayerOptionChosen`, `AfterPlayerOptionChosen` | Emit the option before nested card/player choices and correlate its eventual success afterward. | Event |
 
@@ -118,8 +118,9 @@ The recorder must project enough authoritative state to validate effects that ar
 
 | Boundary | Minimum observation |
 |---|---|
-| run start | Full portable run state, RNG counters, map, players, initial inventory. |
-| action settled | Digest plus action-specific diagnostic subset. |
+| run start | Full portable run state, generated acts, saved maps, RNG counters, players, and initial inventory. |
+| map generated | Full generated topology, current coordinate, visit history, act pools, and RNG state. |
+| action settled | Full `run.core` projection correlated to the latest nested decision. |
 | player decision offered | Available choices with stable IDs/fingerprints. |
 | turn boundary | Full combat state, piles, creatures, powers, orbs, phase, RNG counters. |
 | room boundary | Full run/player state and room/map history. |
@@ -131,7 +132,7 @@ The recorder must project enough authoritative state to validate effects that ar
 Phase 3 implementation exit criteria:
 
 1. Every decision exposed by the reference MCP during an active run is mapped or explicitly excluded.
-2. Every mapped input has an accepted-action hook; the Phase 4 `run_start.core` observation is implemented and later settled-action scopes remain pending.
+2. Every mapped input has an accepted-action hook; Phase 4 `run_start.core` and live `run.core` observations are implemented.
 3. Duplicate signals from UI, synchronizers, action queues, and reward outcomes are deduplicated.
 4. A seeded smoke run exercises every supported action family once matching STS2 assemblies are available.
-5. Remaining research is limited to Phase 4 observation boundaries.
+5. A fresh trace confirms the implemented observation boundaries against the matching game build.

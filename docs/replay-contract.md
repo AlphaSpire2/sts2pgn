@@ -130,12 +130,14 @@ Expected top-level areas include:
 
 Every model and enum uses a stable, locale-independent identifier. Optional human-readable labels are ignored during comparison.
 
-The first implemented scope is `run_start.core` in projection version 1. It normalizes
-run/player resources, inventories, RNG counters, odds, relic grab-bag order, unlocks,
-and gameplay extra fields from the authoritative run-start save. It is emitted at the
-unambiguous settled boundary immediately after `run.start`. Generated acts/maps,
-room state, choices, and combat state remain explicit later Phase 4 scopes; until those
-are implemented, the initial source snapshot remains necessary for full reconstruction.
+Projection version 1 defines two complete scopes. `run_start.core` normalizes generated
+acts and saved maps, run/player resources, inventories, RNG counters, odds, relic grab-bag
+order, unlocks, empty room/choice state, and null combat state at the boundary immediately
+after `run.start`. `run.core` adds the current generated map, room stack, active choices,
+reward sets, Crystal Sphere minigame state, and live combat state for every later
+observation. The source snapshot remains
+available as same-build provenance and an initialization fallback, but a portable simulator
+uses the normalized projection as its comparison contract.
 
 ## Comparison rules
 
@@ -143,7 +145,7 @@ Each field is classified as one of:
 
 - **exact scalar**: integers, booleans, identifiers, enum values, RNG counters;
 - **ordered collection**: draw pile, hand, discard pile, map history, action order;
-- **keyed collection**: players and creatures keyed by stable ID;
+- **keyed collection**: acts, players, rooms, map points, active choices/rewards, combat players, and creatures keyed by stable ID;
 - **set**: values whose order has no gameplay meaning;
 - **decimal**: invariant exact decimal representation unless the game rule is explicitly floating point; or
 - **ignored provenance**: timestamps, platform, display names, animation, sound, and localization.
@@ -210,10 +212,15 @@ Consumers distinguish:
 - `result_divergence`: checkpoints matched until terminal outcome differed; and
 - `incomplete_trace`: valid crash-recovered prefix with result `*`.
 
-## Remaining Phase 4 decisions
+## Phase 4 boundary policy
 
-- The smallest reliable STS2 signal that all effects of each action have settled.
-- Which post-start action boundaries merit a full projection versus a digest-only observation.
-- The exact portable representation of mod-specific mutable fields.
-- Whether source snapshots remain inline JSON or use a separately encoded block when large.
-- The stable ordering rules for all dictionary- and set-like STS2 collections.
+Ordinary queued actions are observed at `ActionExecutor.AfterActionExecuted`. Operations
+whose generic action finishes before their gameplay transition use later signals: map and
+room events for travel, combat turn events for end/undo turn, completed event-option tasks,
+completed reward-set lifetimes, and correlated reward/rest/shop resolution tasks. Run-end
+state is captured before cleanup and written immediately after `run.finish`.
+
+Every recorder observation is a full projection. A simulator must settle the preceding
+input using its own equivalent boundary, then return the requested scope. Presentation,
+animation, localized text, timestamps, and mod-specific state remain outside version 1;
+modded runs are not a supported compatibility target.

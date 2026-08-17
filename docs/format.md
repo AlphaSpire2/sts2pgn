@@ -1,6 +1,6 @@
 # STS2PGN Format Version 1
 
-Status: **text grammar implemented; Phase 4 state projection version 1 is under active development**.
+Status: **text grammar and Phase 4 state projection version 1 implemented**.
 
 ## Purpose
 
@@ -143,7 +143,7 @@ The first record must be `run.start`. Its `data` contains both:
 - `source_snapshot`: the exact STS2 `SerializableRun` JSON and schema information, used by compatible in-game replay; and
 - `state`: the portable normalized state projection, used by simulators.
 
-The portable projection is authoritative for cross-implementation comparison. A simulator must not need to understand private STS2 serialization details to initialize a supported run. Phase 4 currently defines the `run_start.core` scope below; the source snapshot remains necessary until the remaining initialization scopes are normalized.
+The portable projection is authoritative for cross-implementation comparison. A simulator must not need to understand private STS2 serialization details to initialize a supported run. Projection version 1 defines the initial `run_start.core` and live `run.core` scopes below; the source snapshot is retained for same-build provenance and fallback tooling.
 
 Secrets, platform account identifiers, and unnecessary profile history must not be included. Player identifiers are anonymized to run slots.
 
@@ -202,15 +202,15 @@ A `state.observe` record describes authoritative state after the real game has s
 - `context` identifies the comparison boundary.
 - `digest` hashes the canonical JSON encoding of `state`.
 - `projection_version` versions the state schema independently of the file grammar.
-- `state` may be a full projection or a documented partial projection.
+- `state` is the complete projection for its declared scope.
 
-Writers generate lightweight observations after settled actions and full observations at run start, room boundaries, combat turn boundaries, reward boundaries, and run end. The exact version-one projection is finalized during Phase 4.
+Recorder 0.6.0 generates full observations after settled actions and at run start, map generation, room/act boundaries, combat turn boundaries, choice/reward/rest/shop boundaries, and run end.
 
 The core library validates the observation envelope (`after`, `context`, `digest`, `projection_version`, and object-valued `state`) and verifies that the digest matches the canonical state. For `context = run.start`, it also requires the observation to reference `run.start`, match `run.start.data.state`, and conform to the `run_start.core` schema.
 
 ### Projection version 1: `run_start.core`
 
-Recorder version 0.5.0 adds an unambiguous initial settled-state checkpoint. `run.start`
+Recorder version 0.6.0 writes an unambiguous initial settled-state checkpoint. `run.start`
 embeds the portable state in `data.state`; the immediately following `state.observe`
 duplicates that state, references sequence 1, and supplies its canonical digest.
 
@@ -231,6 +231,14 @@ duplicates that state, references sequence 1, and supplies its canonical digest.
     "shared_relic_grab_bag": {},
     "extra": {}
   },
+  "acts": [
+    {
+      "index": 0,
+      "model_id": "ACT.OVERGROWTH",
+      "rooms": {},
+      "saved_map": null
+    }
+  ],
   "players": [
     {
       "slot": "p0",
@@ -251,20 +259,46 @@ duplicates that state, references sequence 1, and supplies its canonical digest.
       "extra": {}
     }
   ],
+  "rooms": [],
+  "choices": {
+    "player_choices": [],
+    "rewards": [],
+    "events": [],
+    "rest": null,
+    "treasure": null,
+    "merchant": null
+  },
+  "special_event": null,
   "combat": null
 }
 ```
 
 Comparison rules for this scope are:
 
+- `acts` is keyed by `index`; each act includes its generated encounter/event pools and optional saved map topology.
 - `players` is keyed by `slot`, although its wire representation preserves run order.
 - Decks, relics, potion slots, visited map coordinates, modifiers, and each relic grab-bag list are ordered.
 - RNG counter objects are keyed by their symbolic counter name and compared exactly.
 - Unlock epochs and seen encounters are serialized in ordinally sorted order because they are sets.
 - Card, relic, enchantment, and modifier saved properties are name-sorted portable objects.
 - Odds are exact STS2 single-precision values encoded as canonical JSON numbers.
-- `combat` is `null` at this boundary. Combat projection is a later Phase 4 scope.
+- `rooms` and choice collections are explicitly empty and `combat` is `null` at a new-run boundary.
 - Wall-clock values, platform identity, discovery/UI history, localization, and presentation state are excluded.
+
+### Projection version 1: `run.core`
+
+Every post-start observation emitted by the recorder uses `scope = "run.core"` and contains the same `run`, `acts`, and `players` foundation as `run_start.core`, plus live state:
+
+- `run.current_act_model`, `total_floor`, `current_map_coord`, `visited_events`, and the current generated `map`;
+- `rooms`, ordered by nesting depth;
+- `choices.player_choices`, active reward sets, event options, rest options, treasure relics, and merchant inventories;
+- `special_event`, normally `null`, carries the full Crystal Sphere board, tool, and divination state while that minigame is active;
+- `combat`, or `null` outside a combat room; and
+- for combat, encounter/round/side and transition flags, players keyed by slot, ordered piles with stable combat-card IDs, energy/stars/orbs, and creatures with HP, block, powers, moves, and intents.
+
+Arrays with semantic identity are compared by key: `acts/index`, `players/slot`, `rooms/stack_depth`, `choices.player_choices/id`, `choices.rewards/id`, `run.map.points/id`, `combat.players/slot`, and `combat.creatures/combat_id`. All other arrays preserve gameplay order.
+
+Recorder contexts currently include `map.generated`, `choice.offered`, `action.settled`, `room.enter`, `room.exit`, `act.enter`, `combat.player_turn.start`, `combat.enemy_turn.start`, `combat.turn.end`, event/Crystal Sphere contexts, reward/rest/shop settled contexts, and `run.end`. The `after` field always references an earlier decision or lifecycle record; when an action contains a nested synchronized choice, it references the latest nested decision.
 
 ## Canonical JSON and hashing
 
