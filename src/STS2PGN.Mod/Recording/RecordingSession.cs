@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Godot;
 using MegaCrit.Sts2.Core.Debug;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Modding;
@@ -48,7 +49,8 @@ internal sealed class RecordingSession : IDisposable
 
         RunMetadata metadata = BuildMetadata(state, playerSlots, runId, startedAt);
         string relativePath = $"sts2pgn/{startedAt:yyyyMMdd-HHmmss}-{runId:N}{FormatConstants.FileExtension}";
-        string path = SaveManager.Instance.GetProfileScopedPath(relativePath);
+        string profilePath = SaveManager.Instance.GetProfileScopedPath(relativePath);
+        string path = ProjectSettings.GlobalizePath(profilePath);
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
 
         FileStream file = new(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
