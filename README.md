@@ -85,11 +85,27 @@ After building, copy these files to the game's `mods/` directory:
 STS2_PGN.dll
 STS2PGN.Core.dll
 STS2_PGN.json
+config.json
 ```
 
 The game requires the manifest filename to match the mod ID. The source manifest is named `mod_manifest.json`, but the build output renames it to `STS2_PGN.json`.
 
 The mod starts a trace when a supported single-player run launches. Traces are stored under the active profile's `sts2pgn/` directory. Metadata and every accepted action are flushed through to disk immediately, so a crash or save-and-quit leaves a parseable incomplete prefix.
+
+The output directory is configured in `config.json`, installed beside `STS2_PGN.dll`:
+
+```json
+{
+  "output_directory": "sts2pgn"
+}
+```
+
+- A relative directory such as `sts2pgn` is resolved beneath the active STS2 profile.
+- An absolute OS path writes directly to that directory.
+- A Godot path such as `user://my-replays` is converted to its native OS path.
+- A missing or invalid configuration falls back to the profile-scoped `sts2pgn` directory and logs the reason.
+
+The configuration is read when the mod initializes, so restart the game after changing it.
 
 The recorder currently captures the exact STS2 save snapshot, run/room/act lifecycle, map movement, combat actions, synchronized player choices, event and rest choices, rewards, treasure, successful shop purchases, progression controls, and Crystal Sphere interactions. Crystal Sphere records its complete generated 11×11 board before recording tool changes and logical cell coordinates, because STS2 marks that minigame as nondeterministic.
 

@@ -16,11 +16,13 @@ internal static class RecorderService
 {
     private static RecordingSession? _session;
     private static RunState? _state;
+    private static RecorderConfig _config = new(RecorderConfig.DefaultOutputDirectory);
     private static readonly List<RoomTraceData> RoomStack = [];
     private static bool _nextRunIsResume;
 
     public static void Initialize()
     {
+        _config = RecorderConfig.Load();
         RunManager manager = RunManager.Instance;
         manager.RunStarted += OnRunStarted;
         manager.RoomEntered += OnRoomEntered;
@@ -123,7 +125,7 @@ internal static class RecorderService
         try
         {
             _state = state;
-            _session = RecordingSession.Start(state);
+            _session = RecordingSession.Start(state, _config);
             RoomStack.Clear();
             RunManager.Instance.ActionQueueSet.ActionEnqueued += OnActionEnqueued;
             RunManager.Instance.PlayerChoiceSynchronizer.PlayerChoiceReceived += OnPlayerChoiceReceived;

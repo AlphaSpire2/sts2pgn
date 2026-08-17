@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <None Include="../../mod_manifest.json" Link="STS2_PGN.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../config.json" Link="config.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Target Name="ValidateGameAssemblies" BeforeTargets="ResolveReferences">

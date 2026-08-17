@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Godot;
 using MegaCrit.Sts2.Core.Debug;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Modding;
@@ -39,8 +38,9 @@ internal sealed class RecordingSession : IDisposable
         _writer = writer;
     }
 
-    public static RecordingSession Start(RunState state)
+    public static RecordingSession Start(RunState state, RecorderConfig config)
     {
+        ArgumentNullException.ThrowIfNull(config);
         DateTimeOffset startedAt = DateTimeOffset.UtcNow;
         Guid runId = Guid.NewGuid();
         Dictionary<ulong, string> playerSlots = state.Players
@@ -48,10 +48,10 @@ internal sealed class RecordingSession : IDisposable
             .ToDictionary(pair => pair.NetId, pair => pair.Slot);
 
         RunMetadata metadata = BuildMetadata(state, playerSlots, runId, startedAt);
-        string relativePath = $"sts2pgn/{startedAt:yyyyMMdd-HHmmss}-{runId:N}{FormatConstants.FileExtension}";
-        string profilePath = SaveManager.Instance.GetProfileScopedPath(relativePath);
-        string path = ProjectSettings.GlobalizePath(profilePath);
-        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+        string fileName = $"{startedAt:yyyyMMdd-HHmmss}-{runId:N}{FormatConstants.FileExtension}";
+        string outputDirectory = config.ResolveOutputDirectory();
+        Directory.CreateDirectory(outputDirectory);
+        string path = System.IO.Path.Combine(outputDirectory, fileName);
 
         FileStream file = new(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
         try
