@@ -1,0 +1,17 @@
+[Format "STS2PGN"]
+[FormatVersion "1"]
+[RecorderVersion "0.1.0"]
+[RunId "00000000-0000-0000-0000-000000000000"]
+[GameVersion "EXAMPLE"]
+[GameCommit "UNKNOWN"]
+[ModelIdHash "0"]
+[Seed "EXAMPLESEED"]
+[Mode "STANDARD"]
+[Ascension "0"]
+[Players "[{\"slot\":\"p0\",\"character\":\"IRONCLAD\"}]"]
+[StartedAt "2026-01-01T00:00:00Z"]
+[Result "*"]
+
+1 run.start {"actor":null,"location":{"act":0,"floor":0},"data":{"source_snapshot":{"schema_version":0,"encoding":"json","data":{}},"state":{"players":{"p0":{"character":"IRONCLAD"}},"seed":"EXAMPLESEED"}},"extensions":{}}
+2 state.observe {"after":1,"context":"run.start","digest":"sha256:example-not-a-real-digest","projection_version":1,"state":{"players":{"p0":{"character":"IRONCLAD"}},"seed":"EXAMPLESEED"}}
+*
