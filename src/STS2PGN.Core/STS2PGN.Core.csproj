@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>STS2PGN.Core</AssemblyName>
+    <RootNamespace>STS2PGN</RootNamespace>
+    <Description>Portable model, parser, and validation library for STS2PGN run traces.</Description>
+  </PropertyGroup>
+</Project>

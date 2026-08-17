@@ -1,0 +1,10 @@
+{
+  "id": "STS2_PGN",
+  "name": "STS2PGN",
+  "author": "STS2PGN contributors",
+  "description": "Records deterministic Slay the Spire 2 run traces for replay and simulator conformance testing",
+  "version": "0.1.0",
+  "has_pck": false,
+  "has_dll": true,
+  "affects_gameplay": false
+}
