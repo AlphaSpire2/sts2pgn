@@ -105,6 +105,35 @@ public sealed class Sts2PgnValidatorTests
         Assert.Contains(validation.Errors, issue => issue.Code == "digest_mismatch");
     }
 
+    [Fact]
+    public void ValidatorAcceptsInitiatorNestedChoiceResolveOrdering()
+    {
+        RunRecord record = TestRecordFactory.CreateBuilder()
+            .AppendJson("run.start", "{\"data\":{}}")
+            .AppendJson("reward.claim", "{\"data\":{\"set_id\":0,\"reward_index\":1}}")
+            .AppendJson("choice.index", "{\"data\":{\"choice_id\":0,\"indexes\":[2]}}")
+            .AppendJson("reward.resolve", "{\"data\":{\"action_sequence\":2,\"success\":true}}")
+            .Build();
+
+        Assert.True(Sts2PgnValidator.Validate(record).IsValid);
+    }
+
+    [Fact]
+    public void ValidatorRejectsResolveThatPointsAtWrongOrAlreadyResolvedAction()
+    {
+        RunRecord record = TestRecordFactory.CreateBuilder()
+            .AppendJson("run.start", "{\"data\":{}}")
+            .AppendJson("rest.choose", "{\"data\":{\"option_id\":\"SMITH\"}}")
+            .AppendJson("reward.resolve", "{\"data\":{\"action_sequence\":2,\"success\":true}}")
+            .AppendJson("rest.resolve", "{\"data\":{\"action_sequence\":2,\"success\":true}}")
+            .Build();
+
+        Sts2PgnValidationResult validation = Sts2PgnValidator.Validate(record);
+
+        Assert.Contains(validation.Errors, issue => issue.Code == "resolve_kind_mismatch");
+        Assert.Contains(validation.Errors, issue => issue.Code == "duplicate_resolve");
+    }
+
     private static RunRecordEntry CreateEntry(long sequence, string kind, string json)
     {
         using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(json);

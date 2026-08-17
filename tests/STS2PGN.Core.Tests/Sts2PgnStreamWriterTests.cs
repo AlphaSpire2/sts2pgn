@@ -25,6 +25,8 @@ public sealed class Sts2PgnStreamWriterTests
         RunRecord parsed = Sts2PgnParser.Parse(output.ToString());
         Assert.Equal(RunResult.Victory, parsed.Result);
         Assert.Equal([1L, 2L], parsed.Entries.Select(entry => entry.Sequence));
+        Assert.EndsWith("\n", output.ToString(), StringComparison.Ordinal);
+        Assert.False(output.ToString().EndsWith("\n\n", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -39,6 +41,8 @@ public sealed class Sts2PgnStreamWriterTests
         RunRecord parsed = Sts2PgnParser.Parse(output.ToString());
         Assert.Equal(RunResult.Incomplete, parsed.Result);
         Assert.Single(parsed.Entries);
+        Assert.EndsWith("\n", output.ToString(), StringComparison.Ordinal);
+        Assert.False(output.ToString().EndsWith("\n\n", StringComparison.Ordinal));
     }
 
     [Fact]

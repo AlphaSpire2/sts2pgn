@@ -24,6 +24,15 @@ public static class Sts2PgnValidator
         "Result",
     ];
 
+    private static readonly IReadOnlyDictionary<string, string> ResolveKinds =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["reward.resolve"] = "reward.claim",
+            ["rest.resolve"] = "rest.choose",
+            ["shop.purchase.resolve"] = "shop.purchase",
+            ["shop.remove_card.resolve"] = "shop.remove_card",
+        };
+
     public static Sts2PgnValidationResult Validate(RunRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
@@ -210,6 +219,10 @@ public static class Sts2PgnValidator
         }
 
         HashSet<long> sequences = record.Entries.Select(entry => entry.Sequence).ToHashSet();
+        Dictionary<long, RunRecordEntry> entriesBySequence = record.Entries
+            .GroupBy(entry => entry.Sequence)
+            .ToDictionary(group => group.Key, group => group.First());
+        HashSet<long> resolvedActions = [];
         for (int index = 0; index < record.Entries.Count; index++)
         {
             RunRecordEntry entry = record.Entries[index];
@@ -232,6 +245,54 @@ public static class Sts2PgnValidator
             {
                 ValidateObservation(entry, sequences, issues);
             }
+
+            if (ResolveKinds.TryGetValue(entry.Kind, out string? expectedActionKind))
+            {
+                ValidateResolve(entry, expectedActionKind, entriesBySequence, resolvedActions, issues);
+            }
+        }
+    }
+
+    private static void ValidateResolve(
+        RunRecordEntry entry,
+        string expectedActionKind,
+        IReadOnlyDictionary<long, RunRecordEntry> entriesBySequence,
+        HashSet<long> resolvedActions,
+        List<ValidationIssue> issues)
+    {
+        string location = $"sequence:{entry.Sequence}";
+        if (!entry.Payload.TryGetProperty("data", out JsonElement data)
+            || data.ValueKind != JsonValueKind.Object
+            || !data.TryGetProperty("action_sequence", out JsonElement actionElement)
+            || !actionElement.TryGetInt64(out long actionSequence)
+            || actionSequence <= 0
+            || actionSequence >= entry.Sequence
+            || !entriesBySequence.TryGetValue(actionSequence, out RunRecordEntry? action))
+        {
+            AddError(
+                issues,
+                "invalid_resolve_reference",
+                $"{entry.Kind} must reference an earlier action in data.action_sequence.",
+                location);
+            return;
+        }
+
+        if (!string.Equals(action.Kind, expectedActionKind, StringComparison.Ordinal))
+        {
+            AddError(
+                issues,
+                "resolve_kind_mismatch",
+                $"{entry.Kind} references {action.Kind}; expected {expectedActionKind}.",
+                location);
+        }
+
+        if (!resolvedActions.Add(actionSequence))
+        {
+            AddError(
+                issues,
+                "duplicate_resolve",
+                $"Action sequence {actionSequence} has more than one resolve record.",
+                location);
         }
     }
 

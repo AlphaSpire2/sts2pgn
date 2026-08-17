@@ -1,10 +1,12 @@
 using System.Reflection;
-using System.Text.Json;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
 using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Rewards;
@@ -38,8 +40,8 @@ internal static class RunResumePatch
 [HarmonyPatch(typeof(EventSynchronizer), nameof(EventSynchronizer.ChooseLocalOption))]
 internal static class EventChoicePatch
 {
-    [HarmonyPostfix]
-    private static void Postfix(int index) => RecorderService.RecordEventChoice(index);
+    [HarmonyPrefix]
+    private static void Prefix(int index) => RecorderService.RecordEventChoice(index);
 }
 
 [HarmonyPatch(typeof(NAncientEventLayout), "OnDialogueHitboxClicked")]
@@ -56,18 +58,26 @@ internal static class RoomProceedPatch
     private static void Prefix() => RecorderService.RecordRoomProceed();
 }
 
-[HarmonyPatch(typeof(RewardsSetSynchronizer), nameof(RewardsSetSynchronizer.SelectLocalReward))]
+[HarmonyPatch]
 internal static class RewardSelectionPatch
 {
+    private static MethodBase TargetMethod() => AccessTools.GetDeclaredMethods(typeof(RewardsSetSynchronizer))
+        .Single(method => method.Name == "SelectRewardForPlayer" &&
+            method.ReturnType == typeof(Task<bool>) &&
+            method.GetParameters().Length == 2 &&
+            method.GetParameters()[1].ParameterType == typeof(Reward));
+
     [HarmonyPrefix]
-    private static void Prefix(Reward reward, out RewardSelectionSnapshot? __state)
+    private static void Prefix(object setState, Reward reward, out RewardSelectionSnapshot? __state)
     {
         RewardSelectionSnapshot? snapshot = null;
         RecorderService.ExecuteSafely("capturing reward selection", () =>
+        {
+            RewardsSet set = RewardSetFromState(setState);
             snapshot = new RewardSelectionSnapshot(
-                reward.Player.NetId,
-                reward.GetType().Name,
-                JsonSerializer.SerializeToElement(reward.ToSerializable())));
+                RecorderService.BeginRewardClaim(set, reward),
+                reward.Player.NetId);
+        });
         __state = snapshot;
     }
 
@@ -76,44 +86,59 @@ internal static class RewardSelectionPatch
     {
         if (__state is not null)
         {
-            __result = RecordIfSuccessful(__result, __state);
+            __result = RecordResolution(__result, __state);
         }
     }
 
-    private static async Task<bool> RecordIfSuccessful(Task<bool> selection, RewardSelectionSnapshot snapshot)
+    private static async Task<bool> RecordResolution(Task<bool> selection, RewardSelectionSnapshot snapshot)
     {
         bool selected = await selection;
-        if (selected)
-        {
-            RecorderService.TryRecord("reward.claim", new
-            {
-                reward_type = snapshot.RewardType,
-                reward = snapshot.Reward,
-            }, snapshot.PlayerId);
-        }
-
+        RecorderService.ResolveRewardClaim(snapshot.ActionSequence, snapshot.PlayerId, selected);
         return selected;
     }
 
-    internal sealed record RewardSelectionSnapshot(ulong PlayerId, string RewardType, JsonElement Reward);
+    internal static RewardsSet RewardSetFromState(object state) =>
+        (RewardsSet)AccessTools.Field(state.GetType(), "set").GetValue(state)!;
+
+    internal sealed record RewardSelectionSnapshot(long? ActionSequence, ulong PlayerId);
 }
 
-[HarmonyPatch(typeof(RewardsSetSynchronizer), nameof(RewardsSetSynchronizer.SkipLocalRewardsSet))]
+[HarmonyPatch]
 internal static class RewardSkipPatch
 {
+    private static MethodBase TargetMethod() => AccessTools.GetDeclaredMethods(typeof(RewardsSetSynchronizer))
+        .Single(method => method.Name == "SkipRewardsSetOnStackTopForPlayer");
+
     [HarmonyPostfix]
-    private static void Postfix() => RecorderService.TryRecord("reward.skip", new { });
+    private static void Postfix(object __result) => RecorderService.ExecuteSafely(
+        "capturing reward skip",
+        () => RecorderService.RecordRewardSkip(RewardSelectionPatch.RewardSetFromState(__result)));
 }
 
 [HarmonyPatch(typeof(MerchantEntry), nameof(MerchantEntry.OnTryPurchaseWrapper))]
 internal static class MerchantPurchasePatch
 {
     [HarmonyPrefix]
-    private static void Prefix(MerchantEntry __instance, out ShopPurchaseSnapshot? __state)
+    private static void Prefix(MerchantEntry __instance, bool ignoreCost, out ShopPurchaseSnapshot? __state)
     {
         ShopPurchaseSnapshot? snapshot = null;
         RecorderService.ExecuteSafely("capturing merchant purchase", () =>
-            snapshot = ShopPurchaseSnapshot.Capture(__instance));
+        {
+            if (__instance.IsStocked && (__instance.EnoughGold || ignoreCost))
+            {
+                snapshot = ShopPurchaseSnapshot.Capture(__instance, ignoreCost);
+                snapshot = snapshot with
+                {
+                    ActionSequence = RecorderService.TryRecord("shop.purchase", new
+                    {
+                        entry_type = snapshot.EntryType,
+                        model_id = snapshot.ModelId,
+                        cost = snapshot.Cost,
+                        ignore_cost = snapshot.IgnoreCost,
+                    }, snapshot.PlayerId),
+                };
+            }
+        });
         __state = snapshot;
     }
 
@@ -122,38 +147,41 @@ internal static class MerchantPurchasePatch
     {
         if (__state is not null)
         {
-            __result = ShopPurchaseSnapshot.RecordIfSuccessful(__result, __state);
+            __result = ShopPurchaseSnapshot.RecordResolution(__result, __state);
         }
     }
 }
 
-[HarmonyPatch(typeof(MerchantCardRemovalEntry), nameof(MerchantCardRemovalEntry.OnTryPurchaseWrapper))]
-internal static class MerchantCardRemovalPurchasePatch
+[HarmonyPatch(typeof(OneOffSynchronizer), nameof(OneOffSynchronizer.DoLocalMerchantCardRemoval))]
+internal static class MerchantCardRemovalPatch
 {
     [HarmonyPrefix]
-    private static void Prefix(MerchantCardRemovalEntry __instance, out ShopPurchaseSnapshot? __state)
-    {
-        ShopPurchaseSnapshot? snapshot = null;
-        RecorderService.ExecuteSafely("capturing merchant card removal", () =>
-            snapshot = ShopPurchaseSnapshot.Capture(__instance));
-        __state = snapshot;
-    }
+    private static void Prefix(int goldCost, bool cancelable, out long? __state) =>
+        __state = RecorderService.BeginShopCardRemoval(goldCost, cancelable);
 
     [HarmonyPostfix]
-    private static void Postfix(ref Task<bool> __result, ShopPurchaseSnapshot? __state)
+    private static void Postfix(ref Task<bool> __result, long? __state) =>
+        __result = RecordResolution(__result, __state);
+
+    private static async Task<bool> RecordResolution(Task<bool> removal, long? actionSequence)
     {
-        if (__state is not null)
-        {
-            __result = ShopPurchaseSnapshot.RecordIfSuccessful(__result, __state);
-        }
+        bool succeeded = await removal;
+        RecorderService.ResolveShopCardRemoval(actionSequence, succeeded);
+        return succeeded;
     }
 }
 
-internal sealed record ShopPurchaseSnapshot(ulong PlayerId, string EntryType, string? ModelId, int Cost)
+internal sealed record ShopPurchaseSnapshot(
+    ulong PlayerId,
+    string EntryType,
+    string? ModelId,
+    int Cost,
+    bool IgnoreCost,
+    long? ActionSequence = null)
 {
     private static readonly FieldInfo PlayerField = AccessTools.Field(typeof(MerchantEntry), "_player");
 
-    public static ShopPurchaseSnapshot Capture(MerchantEntry entry)
+    public static ShopPurchaseSnapshot Capture(MerchantEntry entry, bool ignoreCost)
     {
         Player player = (Player)PlayerField.GetValue(entry)!;
         string? modelId = entry switch
@@ -163,26 +191,168 @@ internal sealed record ShopPurchaseSnapshot(ulong PlayerId, string EntryType, st
             MerchantPotionEntry potion => potion.Model?.Id.ToString(),
             _ => null,
         };
-        return new ShopPurchaseSnapshot(player.NetId, entry.GetType().Name, modelId, entry.Cost);
+        string entryType = entry switch
+        {
+            MerchantCardEntry => "card",
+            MerchantRelicEntry => "relic",
+            MerchantPotionEntry => "potion",
+            _ => PortablePayloads.SymbolFromType(entry.GetType(), "Merchant", "Entry"),
+        };
+        return new ShopPurchaseSnapshot(player.NetId, entryType, modelId, entry.Cost, ignoreCost);
     }
 
-    public static async Task<bool> RecordIfSuccessful(Task<bool> purchase, ShopPurchaseSnapshot snapshot)
+    public static async Task<bool> RecordResolution(Task<bool> purchase, ShopPurchaseSnapshot snapshot)
     {
         bool succeeded = await purchase;
-        if (succeeded)
+        if (snapshot.ActionSequence.HasValue)
         {
-            string kind = snapshot.EntryType == nameof(MerchantCardRemovalEntry)
-                ? "shop.remove_card"
-                : "shop.purchase";
-            RecorderService.TryRecord(kind, new
+            RecorderService.TryRecord("shop.purchase.resolve", new
             {
-                entry_type = snapshot.EntryType,
-                model_id = snapshot.ModelId,
-                cost = snapshot.Cost,
+                action_sequence = snapshot.ActionSequence.Value,
+                success = succeeded,
             }, snapshot.PlayerId);
         }
 
         return succeeded;
+    }
+}
+
+[HarmonyPatch(typeof(MegaCrit.Sts2.Core.GameActions.Multiplayer.PlayerChoiceSynchronizer),
+    nameof(MegaCrit.Sts2.Core.GameActions.Multiplayer.PlayerChoiceSynchronizer.ReserveChoiceId))]
+internal static class ReservedChoiceOfferPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(Player player, uint __result) =>
+        RecorderService.RegisterReservedChoice(player, __result);
+}
+
+[HarmonyPatch(typeof(CardSelectCmd), nameof(CardSelectCmd.FromChooseACardScreen))]
+internal static class ChooseCardOfferPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(IReadOnlyList<CardModel> cards, Player player, out uint? __state) =>
+        __state = RecorderService.RegisterUpcomingChoice(player, "choose_a_card", new
+        {
+            options = cards.Select((card, index) => new
+            {
+                index,
+                fingerprint = PortablePayloads.CardFingerprint(card),
+            }).ToArray(),
+        });
+
+    [HarmonyPostfix]
+    private static void Postfix(ref Task<CardModel?> __result, Player player, uint? __state) =>
+        __result = ClearWhenComplete(__result, player, __state);
+
+    private static async Task<CardModel?> ClearWhenComplete(Task<CardModel?> task, Player player, uint? choiceId)
+    {
+        try
+        {
+            return await task;
+        }
+        finally
+        {
+            RecorderService.ClearUpcomingChoice(player, choiceId);
+        }
+    }
+}
+
+[HarmonyPatch(typeof(CardSelectCmd), nameof(CardSelectCmd.FromSimpleGridForRewards))]
+internal static class RewardGridOfferPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(List<CardCreationResult> cards, Player player, out uint? __state) =>
+        __state = CardGridOfferPatch.Register(cards.Select(result => result.Card).ToArray(), player, "reward_grid");
+
+    [HarmonyPostfix]
+    private static void Postfix(ref Task<IEnumerable<CardModel>> __result, Player player, uint? __state) =>
+        __result = CardGridOfferPatch.ClearWhenComplete(__result, player, __state);
+}
+
+[HarmonyPatch(typeof(CardSelectCmd), nameof(CardSelectCmd.FromSimpleGrid))]
+internal static class CardGridOfferPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(IReadOnlyList<CardModel> cardsIn, Player player, out uint? __state) =>
+        __state = Register(cardsIn, player, "card_grid");
+
+    [HarmonyPostfix]
+    private static void Postfix(ref Task<IEnumerable<CardModel>> __result, Player player, uint? __state) =>
+        __result = ClearWhenComplete(__result, player, __state);
+
+    internal static uint? Register(IReadOnlyList<CardModel> cards, Player player, string context) =>
+        RecorderService.RegisterUpcomingChoice(player, context, new
+        {
+            options = cards.Select((card, index) => new
+            {
+                index,
+                fingerprint = PortablePayloads.CardFingerprint(card),
+            }).ToArray(),
+        });
+
+    internal static async Task<IEnumerable<CardModel>> ClearWhenComplete(
+        Task<IEnumerable<CardModel>> task,
+        Player player,
+        uint? choiceId)
+    {
+        try
+        {
+            return await task;
+        }
+        finally
+        {
+            RecorderService.ClearUpcomingChoice(player, choiceId);
+        }
+    }
+}
+
+[HarmonyPatch(typeof(CardSelectCmd), nameof(CardSelectCmd.FromChooseABundleScreen))]
+internal static class BundleOfferPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(IReadOnlyList<IReadOnlyList<CardModel>> bundles, Player player, out uint? __state) =>
+        __state = RecorderService.RegisterUpcomingChoice(player, "card_bundle", new
+        {
+            options = bundles.Select((bundle, index) => new
+            {
+                index,
+                cards = bundle.Select(PortablePayloads.CardFingerprint).ToArray(),
+            }).ToArray(),
+        });
+
+    [HarmonyPostfix]
+    private static void Postfix(ref Task<IEnumerable<CardModel>> __result, Player player, uint? __state) =>
+        __result = CardGridOfferPatch.ClearWhenComplete(__result, player, __state);
+}
+
+[HarmonyPatch(typeof(RelicSelectCmd), nameof(RelicSelectCmd.FromChooseARelicScreen))]
+internal static class RelicOfferPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(IReadOnlyList<RelicModel> relics, Player player, out uint? __state) =>
+        __state = RecorderService.RegisterUpcomingChoice(player, "relic", new
+        {
+            options = relics.Select((relic, index) => new
+            {
+                index,
+                model_id = relic.Id.ToString(),
+            }).ToArray(),
+        });
+
+    [HarmonyPostfix]
+    private static void Postfix(ref Task<RelicModel?> __result, Player player, uint? __state) =>
+        __result = ClearWhenComplete(__result, player, __state);
+
+    private static async Task<RelicModel?> ClearWhenComplete(Task<RelicModel?> task, Player player, uint? choiceId)
+    {
+        try
+        {
+            return await task;
+        }
+        finally
+        {
+            RecorderService.ClearUpcomingChoice(player, choiceId);
+        }
     }
 }
 
@@ -216,15 +386,15 @@ internal static class CrystalSphereStartPatch
                 SerializableCrystalSphereItem serializable = item.ToSerializable();
                 return new
                 {
-                    type = serializable.type.ToString().ToLowerInvariant(),
+                    type = PortablePayloads.Symbol(serializable.type),
                     position = new { x = item.Position.X, y = item.Position.Y },
                     size = new { width = item.Size.X, height = item.Size.Y },
                     is_good = item.IsGood,
                     card_rarity = serializable.type == CrystalSphereItemType.CardReward
-                        ? serializable.cardRarity.ToString().ToLowerInvariant()
+                        ? PortablePayloads.Symbol(serializable.cardRarity)
                         : null,
                     potion_rarity = serializable.type == CrystalSphereItemType.Potion
-                        ? serializable.potionRarity.ToString().ToLowerInvariant()
+                        ? PortablePayloads.Symbol(serializable.potionRarity)
                         : null,
                     is_big_gold = serializable.type == CrystalSphereItemType.Gold
                         ? serializable.isBigGold
@@ -235,7 +405,7 @@ internal static class CrystalSphereStartPatch
     }
 
     internal static string ToolName(CrystalSphereMinigame.CrystalSphereToolType tool) =>
-        tool.ToString().ToLowerInvariant();
+        PortablePayloads.Symbol(tool);
 }
 
 [HarmonyPatch(typeof(CrystalSphereMinigame), nameof(CrystalSphereMinigame.SetTool))]

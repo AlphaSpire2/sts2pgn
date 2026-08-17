@@ -72,7 +72,7 @@ internal sealed class RecordingSession : IDisposable
         }
     }
 
-    public void Record(string kind, object? data, ulong? actorId = null)
+    public long? Record(string kind, object? data, ulong? actorId = null)
     {
         JsonElement payload = JsonSerializer.SerializeToElement(new
         {
@@ -86,8 +86,10 @@ internal sealed class RecordingSession : IDisposable
         {
             if (!_disposed && !_writer.IsCompleted)
             {
-                _writer.Append(kind, payload);
+                return _writer.Append(kind, payload).Sequence;
             }
+
+            return null;
         }
     }
 
@@ -102,6 +104,9 @@ internal sealed class RecordingSession : IDisposable
 
             Record("run.finish", new { result = result.ToToken() });
             _writer.Complete(result);
+            _writer.Dispose();
+            _file.Dispose();
+            Sts2PgnFileFinalizer.FinalizeResultHeader(Path, result);
         }
     }
 
