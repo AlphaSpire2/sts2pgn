@@ -90,7 +90,7 @@ Nested rooms created by events are captured by the normal room stack and lifecyc
 | STS2PGN kind | Authoritative source | Strategy | Status |
 |---|---|---|---|
 | `shop.purchase` / `shop.purchase.resolve` | `Core.Entities.Merchant/MerchantEntry.cs`: `OnTryPurchaseWrapper` | Reproduce wrapper validation, then emit the pre-purchase flat inventory index, category/index, and portable type/model/cost before effects; correlate the outcome. | Direct |
-| `shop.remove_card` / `shop.remove_card.resolve` | `OneOffSynchronizer.DoLocalMerchantCardRemoval` plus `PlayerChoiceReceived` | Emit cost/cancelability before the deck choice; selected deck index/fingerprint follows; outcome is correlated afterward. | Direct/Event |
+| `shop.remove_card` / `shop.remove_card.resolve` | `OneOffSynchronizer.DoLocalMerchantCardRemoval` plus `PlayerChoiceReceived` | Emit cost/cancelability before the deck choice; selected deck index/fingerprint follows; outcome is correlated afterward. `MerchantCardRemovalEntry` is excluded from generic `shop.purchase` interception so these paths are mutually exclusive. | Direct/Event |
 | shop/rest close | proceed button opens the map | Presentation-only; the following authoritative `map.choose` advances the run. | Excluded |
 
 Clicks rejected by wrapper validation (out of stock or insufficient gold) are not recorded. An accepted operation that later returns false is recorded with `success: false` because cancellation or a full inventory can affect the interaction sequence.

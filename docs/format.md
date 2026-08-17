@@ -131,6 +131,9 @@ Localized names are descriptive only and cannot identify gameplay objects.
   category (`character_card`, `colorless_card`, `relic`, or `potion`), and its index
   within that category. The type, model ID, and cost are validation fingerprints rather
   than substitutes for those indexes.
+- Merchant card removal is represented only by `shop.remove_card`, its nested
+  `choice.cards`, and `shop.remove_card.resolve`; it must not also emit a generic
+  `shop.purchase` pair.
 - UI indexes alone are never sufficient when a semantic identifier is available.
 
 ## Initial state

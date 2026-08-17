@@ -202,6 +202,21 @@ public sealed class Sts2PgnValidatorTests
     }
 
     [Fact]
+    public void ValidatorRejectsCardRemovalAsGenericShopPurchase()
+    {
+        RunRecord record = TestRecordFactory.CreateBuilder()
+            .AppendJson("run.start", "{\"data\":{}}")
+            .AppendJson(
+                "shop.purchase",
+                "{\"actor\":\"p0\",\"data\":{\"inventory_index\":13,\"entry_group\":\"card_removal\",\"entry_index\":0,\"entry_type\":\"card_removal\",\"model_id\":\"CARD_REMOVAL\"}}")
+            .Build();
+
+        Assert.Contains(
+            Sts2PgnValidator.Validate(record).Errors,
+            issue => issue.Code == "invalid_shop_identity");
+    }
+
+    [Fact]
     public void ValidatorMapsCardRewardAlternativesIntoCombinedIndexSpace()
     {
         RunRecord valid = TestRecordFactory.CreateBuilder()

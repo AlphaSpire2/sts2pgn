@@ -378,14 +378,28 @@ public static class Sts2PgnValidator
             || !HasNonNegativeInteger(data, "entry_index")
             || !HasNonEmptyString(data, "entry_group")
             || !HasNonEmptyString(data, "entry_type")
-            || !HasNonEmptyString(data, "model_id"))
+            || !HasNonEmptyString(data, "model_id")
+            || !HasValidShopEntryTypeAndGroup(data))
         {
             AddError(
                 issues,
                 "invalid_shop_identity",
-                "shop.purchase requires inventory_index, entry_group, entry_index, entry_type, and model_id.",
+                "shop.purchase requires inventory/category indexes, a matching card/relic/potion type and group, and model_id.",
                 location);
         }
+    }
+
+    private static bool HasValidShopEntryTypeAndGroup(JsonElement data)
+    {
+        string? entryType = data.GetProperty("entry_type").GetString();
+        string? entryGroup = data.GetProperty("entry_group").GetString();
+        return (entryType, entryGroup) switch
+        {
+            ("card", "character_card" or "colorless_card") => true,
+            ("relic", "relic") => true,
+            ("potion", "potion") => true,
+            _ => false,
+        };
     }
 
     private static void ValidateCardRewardOffer(RunRecordEntry entry, List<ValidationIssue> issues)

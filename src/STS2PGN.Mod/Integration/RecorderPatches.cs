@@ -128,7 +128,12 @@ internal static class MerchantPurchasePatch
         ShopPurchaseSnapshot? snapshot = null;
         RecorderService.ExecuteSafely("capturing merchant purchase", () =>
         {
-            if (__instance.IsStocked && (__instance.EnoughGold || ignoreCost))
+            // Card removal has its own initiating action, nested choice, and resolution
+            // records. It can reach this base wrapper through callers typed as
+            // MerchantEntry, but must never also become a generic shop purchase.
+            if (__instance is not MerchantCardRemovalEntry
+                && __instance.IsStocked
+                && (__instance.EnoughGold || ignoreCost))
             {
                 snapshot = ShopPurchaseSnapshot.Capture(__instance, inventory, ignoreCost);
                 snapshot = snapshot with
