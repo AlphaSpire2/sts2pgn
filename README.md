@@ -5,7 +5,7 @@ STS2PGN records Slay the Spire 2 runs as deterministic, human-readable traces in
 The long-term purpose is simulator conformance testing: record a run in the real game, feed the resulting `.sts2pgn` file to an external simulator, replay the same decisions, and identify the first state difference between the simulator and STS2.
 
 > [!IMPORTANT]
-> Phase 2 is complete: the portable model, parser, writer, validator, canonical JSON hashing, and crash-prefix recovery are implemented. The in-game recorder and replayer are not implemented yet.
+> Phase 3 recorder implementation is in progress. The portable core and durable append writer are tested; the game-coupled recorder has been implemented against the current decompile but still needs to be compiled and smoke-tested with the STS2 assemblies.
 
 ## Architecture
 
@@ -77,7 +77,7 @@ PowerShell users can run:
 
 `build.ps1` also reads `STS2_GAME_DIR`. Its output is `out/STS2_PGN/`.
 
-## Install the scaffold mod
+## Install the recorder mod
 
 After building, copy these files to the game's `mods/` directory:
 
@@ -89,7 +89,9 @@ STS2_PGN.json
 
 The game requires the manifest filename to match the mod ID. The source manifest is named `mod_manifest.json`, but the build output renames it to `STS2_PGN.json`.
 
-At this phase the mod only logs its version during initialization; it does not record runs yet.
+The mod starts a trace when a supported single-player run launches. Traces are stored under the active profile's `sts2pgn/` directory. Metadata and every accepted action are flushed through to disk immediately, so a crash or save-and-quit leaves a parseable incomplete prefix.
+
+The recorder currently captures the exact STS2 save snapshot, run/room/act lifecycle, map movement, combat actions, synchronized player choices, event and rest choices, rewards, treasure, successful shop purchases, progression controls, and Crystal Sphere interactions. Crystal Sphere records its complete generated 11×11 board before recording tool changes and logical cell coordinates, because STS2 marks that minigame as nondeterministic.
 
 ## Core library usage
 

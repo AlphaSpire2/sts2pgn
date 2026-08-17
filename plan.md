@@ -4,7 +4,7 @@
 
 - Phase 1 completed: repository scaffold, mod build contract, format proposal, replay contract, and action-coverage ledger.
 - Phase 2 completed: portable trace model, append-oriented builder, streaming parser, deterministic writer, validation, canonical JSON/SHA-256 hashing, forward-compatible unknown records, crash-prefix recovery, and automated tests.
-- Next: Phase 3, the authoritative in-game recorder mod.
+- Phase 3 in progress: durable append writer and the authoritative recorder source are implemented against the current decompile. Compilation and an in-game smoke run remain pending until the STS2 game assemblies are available.
 
 ## Goal
 
@@ -232,6 +232,7 @@ Deliverable: a game-independent library that can create, parse, validate, and ro
 3. Capture synchronized combat actions from the action queue rather than UI input.
 4. Capture `PlayerChoiceSynchronizer.PlayerChoiceReceived` for deterministic mid-action choices.
 5. Capture map, event, rest, reward, treasure, shop, and one-off synchronizer decisions.
+   - Treat `CRYSTAL_SPHERE` as an explicit nondeterministic special case: record its generated board, item layout, tool changes, logical cell clicks, remaining divinations, and proceed action.
 6. Generate an initial snapshot through `RunManager.ToSave()` and STS2's save serializer.
 7. Record the game version, commit, model database hash, and loaded mod manifests.
 8. Write to a profile-scoped replay directory with collision-resistant filenames.

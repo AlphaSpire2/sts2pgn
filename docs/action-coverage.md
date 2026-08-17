@@ -1,6 +1,6 @@
 # Action Coverage Ledger
 
-Status: initial Phase 1 audit against the current `decomp/` snapshot and `../sts2mcp` reference mod.
+Status: Phase 3 implementation audit against the current `decomp/` snapshot and `../sts2mcp` reference mod. Integration points marked implemented still require an in-game smoke test against the matching assemblies.
 
 This ledger maps semantic STS2PGN records to authoritative game integration points. Line numbers are intentionally omitted because the decompile changes every patch. Paths and member names are the review anchors.
 
@@ -16,13 +16,13 @@ Legend:
 | STS2PGN kind | Authoritative source | Strategy | Status |
 |---|---|---|---|
 | `run.start` | `Core.Runs/RunManager.cs`: `RunStarted`, `ToSave` | Subscribe after launch; capture exact and portable initial state. | Event |
-| `run.resume` | `RunManager.SetUpSavedSingleplayer` / `SetUpSavedMultiplayer` | Patch successful saved-run setup and associate the existing run ID. | Direct |
+| `run.resume` | `RunManager.SetUpSavedSingleplayer` | Mark the trace launched from an existing save; multiplayer remains out of v1 scope. | Direct |
 | `run.finish` | `RunManager.OnEnded` and abandonment path | Record final state/result before cleanup; distinguish victory, defeat, abandonment. | Direct |
 | `act.enter` | `RunManager.ActEntered` | Observe new act after its state is initialized. | Event |
 | `act.next` | `NetVoteToMoveToNextActAction` | Record accepted synchronized action. | Direct |
 | `room.enter` | `RunManager.RoomEntered` | Derive room identity and stack from `RunState`. | Event |
 | `room.exit` | `RunManager.RoomExited` | Capture state after authoritative exit. | Event |
-| `room.proceed` | room-specific proceed paths and `RunManager.ProceedFromTerminalRewardsScreen` | Audit common command versus room UI methods; record only progression-bearing input. | Research |
+| `room.proceed` | `RunManager.ProceedFromTerminalRewardsScreen` | Record the common progression command; Crystal Sphere uses its more specific record. | Direct |
 | `map.choose` | `NetMoveToMapCoordAction`, `NetVoteForMapCoordAction`, `MapSelectionSynchronizer.PlayerVoteChanged` | Prefer accepted synchronized game action; store destination coordinate and source location. | Event/Direct |
 
 ## Combat
@@ -62,8 +62,11 @@ The reference implementations in `../sts2mcp/McpMod.Actions.cs` cover card grids
 | STS2PGN kind | Authoritative source | Strategy | Status |
 |---|---|---|---|
 | `event.choose` | `Core.Multiplayer.Game/EventSynchronizer.cs`: `ChooseLocalOption`, `PlayerVoteChanged` | Patch/observe the accepted option; store index plus event and option semantic IDs/text hash. | Direct/Event |
-| `event.advance` | ancient-event dialogue layout | Determine whether advancement affects model state or only gates the next decision. | Research |
-| `event.special` | custom event controllers, initially Crystal Sphere | Define named special operations rather than raw screen coordinates. | Research |
+| `event.advance` | `NAncientEventLayout.OnDialogueHitboxClicked` | Record each progression-bearing dialogue advance. | Direct |
+| `event.crystal_sphere.start` | `CrystalSphereMinigame` constructor | Record the complete generated grid, item list and cell-to-item mapping because the event is nondeterministic. | Direct |
+| `event.crystal_sphere.set_tool` | `CrystalSphereMinigame.SetTool` | Record the semantic `small` or `big` tool. | Direct |
+| `event.crystal_sphere.click` | `CrystalSphereMinigame.CellClicked` | Record logical cell coordinates, active tool, and divinations remaining before the click. | Direct |
+| `event.crystal_sphere.proceed` | `NCrystalSphereScreen.OnProceedButtonPressed` | Record the explicit progression action without duplicating generic room proceed. | Direct |
 | `rest.choose` | `RestSiteSynchronizer.BeforePlayerOptionChosen`, `AfterPlayerOptionChosen` | Record canonical option identity and success after synchronization. | Event |
 
 Nested rooms created by events are captured by the normal room stack and lifecycle events, not invented as separate event actions.
@@ -72,7 +75,7 @@ Nested rooms created by events are captured by the normal room stack and lifecyc
 
 | STS2PGN kind | Authoritative source | Strategy | Status |
 |---|---|---|---|
-| `reward.claim` | `RewardsSetSynchronizer.SelectLocalReward` | Record set ID, reward index/type, and semantic contents before mutation. | Direct |
+| `reward.claim` | `RewardsSetSynchronizer.SelectLocalReward` | Snapshot reward type/content before mutation and emit only when its task succeeds. | Direct |
 | `reward.skip` | `RewardsSetSynchronizer.SkipLocalRewardsSet` and `BeforeLeavingRoom` | Distinguish explicit skip from leaving terminal room rewards. | Direct |
 | `reward.choose_card` | card reward screen plus resulting `PlayerChoiceReceived`/reward sync | Store offered cards and chosen model/card identity. | Event/Research |
 | obtained/skipped card | `RewardSynchronizer.SyncLocalObtainedCard` / `SyncLocalSkippedCard` | Outcome validation; avoid duplicating the player action. | Direct |
@@ -86,8 +89,8 @@ Nested rooms created by events are captured by the normal room stack and lifecyc
 
 | STS2PGN kind | Authoritative source | Strategy | Status |
 |---|---|---|---|
-| `shop.purchase` | `Core.Entities.Merchant/MerchantEntry.cs`: `OnTryPurchaseWrapper`, `PurchaseCompleted` | Subscribe/patch completion; record entry type, inventory slot, model ID, cost, and restock identity. | Event/Direct |
-| `shop.remove_card` | `MerchantCardRemovalEntry.OnTryPurchaseWrapper`, `OneOffSynchronizer.DoLocalMerchantCardRemoval`, player choice | Record cost and selected deck-card fingerprint only on success. | Direct/Event |
+| `shop.purchase` | `Core.Entities.Merchant/MerchantEntry.cs`: `OnTryPurchaseWrapper` | Snapshot entry type/model/cost before mutation and emit only when its task succeeds. | Direct |
+| `shop.remove_card` | `MerchantCardRemovalEntry.OnTryPurchaseWrapper` plus `PlayerChoiceReceived` | Record cost only on success; the selected deck card is captured by the synchronized choice. | Direct/Event |
 | `shop.leave` | merchant room proceed path | Record when required to advance the trace. | Research |
 
 Failed purchases do not mutate the run and are not required for simulator replay. They may be retained later as optional annotations, never as authoritative actions.
@@ -103,9 +106,9 @@ The reference mod exposes additional progression controls that must be audited e
 | `select_card`, `confirm_selection`, `cancel_selection` | `choice.*` plus synchronized result | Research |
 | `select_bundle`, confirm/cancel bundle | `choice.bundle` | Research |
 | `select_relic`, `skip_relic_selection` | `choice.relic` or treasure records | Research |
-| `crystal_sphere_set_tool` | `event.special` with named tool | Research |
-| `crystal_sphere_click_cell` | `event.special` with logical cell coordinate | Research |
-| `crystal_sphere_proceed` | `event.special` or `room.proceed` | Research |
+| `crystal_sphere_set_tool` | `event.crystal_sphere.set_tool` | Direct |
+| `crystal_sphere_click_cell` | `event.crystal_sphere.click` | Direct |
+| `crystal_sphere_proceed` | `event.crystal_sphere.proceed` | Direct |
 | tutorial/modal dismissal | control record only if it gates replay | Research |
 | non-interactive mode, menu/profile/lobby actions | excluded from run trace | Excluded |
 

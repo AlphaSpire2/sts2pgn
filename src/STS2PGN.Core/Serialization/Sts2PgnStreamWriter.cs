@@ -26,7 +26,7 @@ public sealed class Sts2PgnStreamWriter : IDisposable
         _writer = writer;
         _leaveOpen = leaveOpen;
         Sts2PgnWriter.WriteMetadata(_writer, metadata);
-        _writer.Flush();
+        FlushDurably();
     }
 
     public RunRecordEntry Append(string kind, JsonElement payload)
@@ -34,7 +34,7 @@ public sealed class Sts2PgnStreamWriter : IDisposable
         ThrowIfUnavailable();
         RunRecordEntry entry = new(_nextSequence, kind, payload);
         Sts2PgnWriter.WriteEntry(_writer, entry);
-        _writer.Flush();
+        FlushDurably();
         _nextSequence++;
         return entry;
     }
@@ -56,7 +56,7 @@ public sealed class Sts2PgnStreamWriter : IDisposable
 
         _writer.Write(result.ToToken());
         _writer.Write('\n');
-        _writer.Flush();
+        FlushDurably();
         _completed = true;
     }
 
@@ -68,7 +68,7 @@ public sealed class Sts2PgnStreamWriter : IDisposable
         }
 
         _disposed = true;
-        _writer.Flush();
+        FlushDurably();
         if (!_leaveOpen)
         {
             _writer.Dispose();
@@ -81,6 +81,15 @@ public sealed class Sts2PgnStreamWriter : IDisposable
         if (_completed)
         {
             throw new InvalidOperationException("The trace already has a terminal result.");
+        }
+    }
+
+    private void FlushDurably()
+    {
+        _writer.Flush();
+        if (_writer is StreamWriter { BaseStream: FileStream file })
+        {
+            file.Flush(flushToDisk: true);
         }
     }
 }

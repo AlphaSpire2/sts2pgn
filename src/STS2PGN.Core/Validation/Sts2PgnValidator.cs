@@ -51,7 +51,7 @@ public static class Sts2PgnValidator
 
             if (duplicate.Count() > 1)
             {
-                    AddError(issues, "duplicate_tag", $"Tag '{duplicate.Key}' occurs more than once.", $"tag:{duplicate.Key}");
+                AddError(issues, "duplicate_tag", $"Tag '{duplicate.Key}' occurs more than once.", $"tag:{duplicate.Key}");
             }
 
             foreach (TagPair tag in duplicate)
