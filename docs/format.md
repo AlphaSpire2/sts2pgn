@@ -1,6 +1,6 @@
 # STS2PGN Format Version 1
 
-Status: **Phase 1 proposal; not yet stable**.
+Status: **text grammar implemented in Phase 2; portable state projection not yet stable**.
 
 ## Purpose
 
@@ -180,6 +180,8 @@ A `state.observe` record describes authoritative state after the real game has s
 
 Writers generate lightweight observations after settled actions and full observations at run start, room boundaries, combat turn boundaries, reward boundaries, and run end. The exact version-one projection is finalized during Phase 4.
 
+The Phase 2 core library validates the observation envelope (`after`, `context`, `digest`, `projection_version`, and object-valued `state`) and verifies that the digest matches the canonical state. It deliberately does not validate game-specific fields inside `state` until that projection is finalized.
+
 ## Canonical JSON and hashing
 
 Canonical state JSON uses:
@@ -206,3 +208,17 @@ A malformed complete line in the middle of a file is an error and must not be sk
 - Exact game replay requires compatible game version, model hash, and gameplay-affecting mods.
 - Simulator replay may proceed across builds only when the consumer deliberately supports their semantics; compatibility mismatches remain visible in the report.
 - Changes to comparison semantics increment `projection_version` even if the text grammar does not change.
+
+## Phase 2 implementation notes
+
+The portable implementation lives in `src/STS2PGN.Core/` and provides:
+
+- immutable `RunRecord`, `RunMetadata`, and `RunRecordEntry` values;
+- `RunRecordBuilder` for append-oriented producers;
+- `Sts2PgnParser` overloads for strings and incremental `TextReader` input;
+- `Sts2PgnWriter` with deterministic LF output and canonical JSON payloads;
+- `Sts2PgnValidator` with structured error/warning codes;
+- opt-out recovery of a likely truncated, unterminated final JSON line; and
+- `CanonicalJson` serialization and `sha256:` digest generation.
+
+Unknown tags, record kinds, and JSON payload properties are represented without registration and survive parse/write cycles. Parser recovery never skips a malformed newline-terminated record or a malformed record in the middle of a file.

@@ -8,6 +8,17 @@ namespace STS2PGN.Tests;
 public sealed class Sts2PgnParserWriterTests
 {
     [Fact]
+    public void DocumentedMinimalExampleParsesAndValidates()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "examples", "minimal.sts2pgn");
+
+        RunRecord record = Sts2PgnParser.Parse(File.ReadAllText(path));
+
+        Assert.True(Sts2PgnValidator.Validate(record).IsValid);
+        Assert.Equal(["run.start", "state.observe"], record.Entries.Select(entry => entry.Kind));
+    }
+
+    [Fact]
     public void WriterAndParserRoundTripUnknownDataAndEscapedTags()
     {
         const string note = "quoted \"value\" \\ path\nnext\t雪";
@@ -69,6 +80,27 @@ public sealed class Sts2PgnParserWriterTests
             () => Sts2PgnParser.Parse(malformed));
 
         Assert.Contains("Invalid JSON payload", exception.Message);
+    }
+
+    [Fact]
+    public void ParserDoesNotMistakeUnterminatedButCompleteSyntaxErrorForTruncation()
+    {
+        string prefix = Sts2PgnWriter.Write(
+            TestRecordFactory.CreateValid(),
+            new Sts2PgnWriterOptions { IncludeTerminalResult = false });
+        string malformed = prefix + "2 future.action {\"nested\":}";
+
+        Assert.Throws<Sts2PgnParseException>(() => Sts2PgnParser.Parse(malformed));
+    }
+
+    [Fact]
+    public void WriterAlwaysUsesLfEvenWhenTargetWriterDefaultsToCrLf()
+    {
+        using StringWriter target = new() { NewLine = "\r\n" };
+
+        Sts2PgnWriter.Write(target, TestRecordFactory.CreateValid());
+
+        Assert.DoesNotContain("\r", target.ToString());
     }
 
     [Fact]

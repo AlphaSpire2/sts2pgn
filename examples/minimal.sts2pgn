@@ -13,5 +13,5 @@
 [Result "*"]
 
 1 run.start {"actor":null,"location":{"act":0,"floor":0},"data":{"source_snapshot":{"schema_version":0,"encoding":"json","data":{}},"state":{"players":{"p0":{"character":"IRONCLAD"}},"seed":"EXAMPLESEED"}},"extensions":{}}
-2 state.observe {"after":1,"context":"run.start","digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000","projection_version":1,"state":{"players":{"p0":{"character":"IRONCLAD"}},"seed":"EXAMPLESEED"}}
+2 state.observe {"after":1,"context":"run.start","digest":"sha256:1b9db082760202feefaf7e86f6fe7c681b7940b9f7b26aff645a754291f42c7a","projection_version":1,"state":{"players":{"p0":{"character":"IRONCLAD"}},"seed":"EXAMPLESEED"}}
 *

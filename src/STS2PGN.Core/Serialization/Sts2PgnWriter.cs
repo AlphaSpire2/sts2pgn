@@ -37,22 +37,24 @@ public static class Sts2PgnWriter
             writer.Write(tag.Name);
             writer.Write(" \"");
             WriteEscapedTagValue(writer, tag.Value);
-            writer.WriteLine("\"]");
+            writer.Write("\"]\n");
         }
 
-        writer.WriteLine();
+        writer.Write('\n');
         foreach (RunRecordEntry entry in record.Entries)
         {
             writer.Write(entry.Sequence);
             writer.Write(' ');
             writer.Write(entry.Kind);
             writer.Write(' ');
-            writer.WriteLine(CanonicalJson.Serialize(entry.Payload));
+            writer.Write(CanonicalJson.Serialize(entry.Payload));
+            writer.Write('\n');
         }
 
         if (options.IncludeTerminalResult)
         {
-            writer.WriteLine(record.Result.ToToken());
+            writer.Write(record.Result.ToToken());
+            writer.Write('\n');
         }
     }
 
@@ -67,6 +69,9 @@ public static class Sts2PgnWriter
                 '\n' => "\\n",
                 '\r' => "\\r",
                 '\t' => "\\t",
+                < ' ' => throw new ArgumentException(
+                    $"Tag values cannot contain control character U+{(int)character:X4}.",
+                    nameof(value)),
                 _ => character.ToString(),
             });
         }

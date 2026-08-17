@@ -90,6 +90,21 @@ public sealed class Sts2PgnValidatorTests
         Assert.True(Sts2PgnValidator.Validate(record).IsValid);
     }
 
+    [Fact]
+    public void ValidatorRejectsDigestThatDoesNotMatchObservationState()
+    {
+        RunRecord record = TestRecordFactory.CreateBuilder()
+            .AppendJson("run.start", "{}")
+            .AppendJson(
+                "state.observe",
+                "{\"after\":1,\"context\":\"run.start\",\"digest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"projection_version\":1,\"state\":{\"hp\":80}}")
+            .Build();
+
+        Sts2PgnValidationResult validation = Sts2PgnValidator.Validate(record);
+
+        Assert.Contains(validation.Errors, issue => issue.Code == "digest_mismatch");
+    }
+
     private static RunRecordEntry CreateEntry(long sequence, string kind, string json)
     {
         using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(json);

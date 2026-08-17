@@ -22,4 +22,8 @@
     <ProjectReference Include="../../src/STS2PGN.Core/STS2PGN.Core.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../examples/minimal.sts2pgn" Link="examples/minimal.sts2pgn" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

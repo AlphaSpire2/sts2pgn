@@ -242,7 +242,10 @@ public static class Sts2PgnParser
 
             return new RunRecordEntry(sequence, kind, document.RootElement);
         }
-        catch (JsonException) when (!wasTerminated && options.RecoverTruncatedFinalLine)
+        catch (JsonException exception) when (
+            !wasTerminated
+            && options.RecoverTruncatedFinalLine
+            && IsLikelyTruncatedJson(exception, payloadText))
         {
             recovered = true;
             return null;
@@ -287,6 +290,15 @@ public static class Sts2PgnParser
         value.Length > 0
         && new[] { "VICTORY", "DEFEAT", "ABANDONED", "DIVERGED" }
             .Any(token => token.StartsWith(value, StringComparison.Ordinal));
+
+    private static bool IsLikelyTruncatedJson(JsonException exception, string payloadText)
+    {
+        long bytePosition = exception.BytePositionInLine ?? -1;
+        int payloadByteLength = Encoding.UTF8.GetByteCount(payloadText);
+        return bytePosition >= payloadByteLength
+               || exception.Message.Contains("open JSON object or array", StringComparison.OrdinalIgnoreCase)
+               || exception.Message.Contains("end of string", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static void SkipHorizontalWhitespace(string line, ref int index)
     {

@@ -1,5 +1,11 @@
 # STS2PGN Implementation Plan
 
+## Progress
+
+- Phase 1 completed: repository scaffold, mod build contract, format proposal, replay contract, and action-coverage ledger.
+- Phase 2 completed: portable trace model, append-oriented builder, streaming parser, deterministic writer, validation, canonical JSON/SHA-256 hashing, forward-compatible unknown records, crash-prefix recovery, and automated tests.
+- Next: Phase 3, the authoritative in-game recorder mod.
+
 ## Goal
 
 Create a model and Slay the Spire 2 mod that record every gameplay decision and all compatibility information needed to replay a run. The record should be deterministic, durable, human-readable, and inspired by chess PGN.

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using STS2PGN.Model;
+using STS2PGN.Serialization;
 
 namespace STS2PGN.Validation;
 
@@ -50,7 +51,21 @@ public static class Sts2PgnValidator
 
             if (duplicate.Count() > 1)
             {
-                AddError(issues, "duplicate_tag", $"Tag '{duplicate.Key}' occurs more than once.", $"tag:{duplicate.Key}");
+                    AddError(issues, "duplicate_tag", $"Tag '{duplicate.Key}' occurs more than once.", $"tag:{duplicate.Key}");
+            }
+
+            foreach (TagPair tag in duplicate)
+            {
+                foreach (char character in tag.Value)
+                {
+                    if (character >= ' ' || character is '\n' or '\r' or '\t')
+                    {
+                        continue;
+                    }
+
+                    AddError(issues, "invalid_tag_value", $"Tag '{tag.Name}' contains unsupported control character U+{(int)character:X4}.", $"tag:{tag.Name}");
+                    break;
+                }
             }
         }
 
@@ -249,17 +264,40 @@ public static class Sts2PgnValidator
             AddError(issues, "invalid_projection_version", "state.observe requires a positive projection_version.", location);
         }
 
+        string? recordedDigest = null;
         if (!entry.Payload.TryGetProperty("digest", out JsonElement digestElement)
             || digestElement.ValueKind != JsonValueKind.String
             || !IsSha256Digest(digestElement.GetString()!))
         {
             AddError(issues, "invalid_digest", "state.observe requires a lowercase sha256: digest.", location);
         }
+        else
+        {
+            recordedDigest = digestElement.GetString();
+        }
 
+        bool hasValidState = true;
         if (!entry.Payload.TryGetProperty("state", out JsonElement state)
             || state.ValueKind != JsonValueKind.Object)
         {
+            hasValidState = false;
             AddError(issues, "invalid_observation_state", "state.observe requires an object state projection.", location);
+        }
+
+        if (recordedDigest is not null && hasValidState)
+        {
+            try
+            {
+                string computedDigest = CanonicalJson.ComputeSha256(state);
+                if (!string.Equals(recordedDigest, computedDigest, StringComparison.Ordinal))
+                {
+                    AddError(issues, "digest_mismatch", "state.observe digest does not match its canonical state.", location);
+                }
+            }
+            catch (ArgumentException exception)
+            {
+                AddError(issues, "uncanonicalizable_state", exception.Message, location);
+            }
         }
     }
 

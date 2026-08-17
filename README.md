@@ -5,7 +5,7 @@ STS2PGN records Slay the Spire 2 runs as deterministic, human-readable traces in
 The long-term purpose is simulator conformance testing: record a run in the real game, feed the resulting `.sts2pgn` file to an external simulator, replay the same decisions, and identify the first state difference between the simulator and STS2.
 
 > [!IMPORTANT]
-> The repository is in Phase 1. It currently contains the project scaffold and format design; the recorder and replayer are not implemented yet.
+> Phase 2 is complete: the portable model, parser, writer, validator, canonical JSON hashing, and crash-prefix recovery are implemented. The in-game recorder and replayer are not implemented yet.
 
 ## Architecture
 
@@ -13,7 +13,7 @@ The long-term purpose is simulator conformance testing: record a run in the real
 Real STS2 + recorder mod -> .sts2pgn trace -> external simulator -> divergence report
 ```
 
-- `STS2PGN.Core` is a game-independent model, parser, writer, validator, and comparison library. Simulator integrations must only need this library or the documented format.
+- `STS2PGN.Core` is a game-independent model, parser, writer, validator, and canonical state-hashing library. Simulator integrations need only this library or the documented format.
 - `STS2PGN.Mod` is the STS2 mod that converts authoritative game actions and state into portable records.
 - `STS2PGN.Core.Tests` tests the portable contract without requiring the game.
 
@@ -91,9 +91,49 @@ The game requires the manifest filename to match the mod ID. The source manifest
 
 At this phase the mod only logs its version during initialization; it does not record runs yet.
 
+## Core library usage
+
+Parse and validate a trace:
+
+```csharp
+using STS2PGN.Model;
+using STS2PGN.Parsing;
+using STS2PGN.Validation;
+
+RunRecord record = Sts2PgnParser.Parse(File.ReadAllText("run.sts2pgn"));
+Sts2PgnValidationResult validation = Sts2PgnValidator.Validate(record);
+
+if (!validation.IsValid)
+{
+    foreach (ValidationIssue error in validation.Errors)
+    {
+        Console.Error.WriteLine($"{error.Code}: {error.Message}");
+    }
+}
+```
+
+Create and serialize a record:
+
+```csharp
+using STS2PGN.Model;
+using STS2PGN.Serialization;
+
+RunRecord record = new RunRecordBuilder()
+    .AddTag("Format", "STS2PGN")
+    // Add the other required metadata tags.
+    .AppendJson("run.start", "{\"data\":{},\"extensions\":{}}")
+    .Build();
+
+string text = Sts2PgnWriter.Write(record);
+```
+
+`Sts2PgnParser` preserves unknown tags, action kinds, and payload properties. By default it recovers a valid prefix when only the unterminated final JSON record was truncated. Set `RecoverTruncatedFinalLine` to `false` for strict archival validation.
+
+`CanonicalJson.ComputeSha256` sorts object properties and normalizes JSON numbers before hashing portable state observations.
+
 ## Format status
 
-Format version 1 is currently a proposal. Until Phase 2 is complete, examples and schemas may change without migration support. Once version 1 is declared stable, incompatible changes require a new `FormatVersion`.
+The version-one text grammar and core codec are implemented. The portable state projection remains a proposal until the observation work in Phase 4 is complete, so examples and state schemas may still change without migration support. Once version 1 is declared stable, incompatible grammar changes require a new `FormatVersion`, while comparison-schema changes require a new `projection_version`.
 
 The authoritative design documents are:
 
