@@ -4,7 +4,7 @@
 
 - Phase 1 completed: repository scaffold, mod build contract, format proposal, replay contract, and action-coverage ledger.
 - Phase 2 completed: portable trace model, append-oriented builder, streaming parser, deterministic writer, validation, canonical JSON/SHA-256 hashing, forward-compatible unknown records, crash-prefix recovery, and automated tests.
-- Phase 3 implementation completed: the recorder captures the supported single-player decision surface, writes portable fingerprints and correctly ordered nested operations, handles Crystal Sphere explicitly, durably flushes each record, and finalizes results atomically. Full mod compilation and an in-game smoke run remain pending until matching STS2 game assemblies are available.
+- Phase 3 implementation completed: the recorder captures the supported single-player decision surface, writes portable fingerprints and correctly ordered nested operations, handles Crystal Sphere explicitly, durably flushes each record, and finalizes results atomically. The 0.4.1 identity hardening is core-tested; a fresh in-game trace built against matching STS2 assemblies remains the final smoke check before Phase 4.
 - Phase 4 is next: authoritative portable observations and simulator divergence checkpoints.
 
 ## Goal
@@ -244,6 +244,9 @@ Deliverable: a game-independent library that can create, parse, validate, and ro
 9. Flush after every accepted decision so a crash leaves a valid replay prefix.
    - Every flushed prefix must parse without trimming or repair. Write exactly one record-ending newline and never append a blank record line.
 10. Normalize action payloads at the mod boundary: use symbolic enum names, canonical string model IDs, stable player actors, reward-set/reward indexes, and card or offered-choice fingerprints rather than raw STS2 object serialization.
+    - Fingerprint combat targets with both combat ID and model ID.
+    - Identify merchant entries by both flattened inventory index and category-local index, with type/model/cost fingerprints.
+    - Give every generated card-reward alternative (including vanilla relic alternatives) an explicit index in the same index space as offered cards so every selected index is directly resolvable.
 11. Finalize the result and headers when the run ends.
 
 Deliverable: complete `.sts2pgn` recording for supported single-player runs.
@@ -297,6 +300,7 @@ Add automated tests for:
 - Explicit actor attribution for every player decision, including event and proceed actions.
 - Stable symbolic enum/model serialization with no reliance on internal numeric enum values or default object-shaped `ModelId` JSON.
 - Offered-choice and selected-card fingerprints, including deck indexes plus model and mutation data.
+- Exact combat-target fingerprints, shop inventory/category indexes, and complete card-reward alternative index mappings.
 - Format-version compatibility behavior.
 
 Perform seeded integration runs covering:

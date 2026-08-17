@@ -119,19 +119,26 @@ internal static class RewardSkipPatch
 internal static class MerchantPurchasePatch
 {
     [HarmonyPrefix]
-    private static void Prefix(MerchantEntry __instance, bool ignoreCost, out ShopPurchaseSnapshot? __state)
+    private static void Prefix(
+        MerchantEntry __instance,
+        MerchantInventory? inventory,
+        bool ignoreCost,
+        out ShopPurchaseSnapshot? __state)
     {
         ShopPurchaseSnapshot? snapshot = null;
         RecorderService.ExecuteSafely("capturing merchant purchase", () =>
         {
             if (__instance.IsStocked && (__instance.EnoughGold || ignoreCost))
             {
-                snapshot = ShopPurchaseSnapshot.Capture(__instance, ignoreCost);
+                snapshot = ShopPurchaseSnapshot.Capture(__instance, inventory, ignoreCost);
                 snapshot = snapshot with
                 {
                     ActionSequence = RecorderService.TryRecord("shop.purchase", new
                     {
                         entry_type = snapshot.EntryType,
+                        inventory_index = snapshot.InventoryIndex,
+                        entry_group = snapshot.EntryGroup,
+                        entry_index = snapshot.EntryIndex,
                         model_id = snapshot.ModelId,
                         cost = snapshot.Cost,
                         ignore_cost = snapshot.IgnoreCost,
@@ -174,6 +181,9 @@ internal static class MerchantCardRemovalPatch
 internal sealed record ShopPurchaseSnapshot(
     ulong PlayerId,
     string EntryType,
+    int? InventoryIndex,
+    string? EntryGroup,
+    int? EntryIndex,
     string? ModelId,
     int Cost,
     bool IgnoreCost,
@@ -181,7 +191,10 @@ internal sealed record ShopPurchaseSnapshot(
 {
     private static readonly FieldInfo PlayerField = AccessTools.Field(typeof(MerchantEntry), "_player");
 
-    public static ShopPurchaseSnapshot Capture(MerchantEntry entry, bool ignoreCost)
+    public static ShopPurchaseSnapshot Capture(
+        MerchantEntry entry,
+        MerchantInventory? inventory,
+        bool ignoreCost)
     {
         Player player = (Player)PlayerField.GetValue(entry)!;
         string? modelId = entry switch
@@ -198,7 +211,48 @@ internal sealed record ShopPurchaseSnapshot(
             MerchantPotionEntry => "potion",
             _ => PortablePayloads.SymbolFromType(entry.GetType(), "Merchant", "Entry"),
         };
-        return new ShopPurchaseSnapshot(player.NetId, entryType, modelId, entry.Cost, ignoreCost);
+        int? inventoryIndex = IndexOfReference(inventory?.AllEntries, entry);
+        (string? entryGroup, int? entryIndex) = entry switch
+        {
+            MerchantCardEntry card when IndexOfReference(inventory?.CharacterCardEntries, card) is { } index =>
+                ("character_card", index),
+            MerchantCardEntry card when IndexOfReference(inventory?.ColorlessCardEntries, card) is { } index =>
+                ("colorless_card", index),
+            MerchantRelicEntry relic => ("relic", IndexOfReference(inventory?.RelicEntries, relic)),
+            MerchantPotionEntry potion => ("potion", IndexOfReference(inventory?.PotionEntries, potion)),
+            _ => (null, null),
+        };
+        return new ShopPurchaseSnapshot(
+            player.NetId,
+            entryType,
+            inventoryIndex,
+            entryGroup,
+            entryIndex,
+            modelId,
+            entry.Cost,
+            ignoreCost);
+    }
+
+    private static int? IndexOfReference<T>(IEnumerable<T>? entries, T target)
+        where T : class
+    {
+        if (entries is null)
+        {
+            return null;
+        }
+
+        int index = 0;
+        foreach (T entry in entries)
+        {
+            if (ReferenceEquals(entry, target))
+            {
+                return index;
+            }
+
+            index++;
+        }
+
+        return null;
     }
 
     public static async Task<bool> RecordResolution(Task<bool> purchase, ShopPurchaseSnapshot snapshot)

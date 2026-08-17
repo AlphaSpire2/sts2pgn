@@ -121,9 +121,16 @@ Localized names are descriptive only and cannot identify gameplay objects.
 - Players use their run slot, such as `p0`. Raw network/platform IDs may be retained only as non-authoritative metadata.
 - Map points use act index plus row and column.
 - Creatures in combat use STS2 combat IDs and include their model ID as a validation fingerprint.
+- Targeted combat actions retain `data.target_id` for compatibility and also include
+  `data.target = { "combat_id": N, "model_id": "..." }`. Targetless actions use `null`
+  for both fields. A consumer must reject a mismatched ID or model fingerprint.
 - Combat cards use the `NetCombatCard.CombatCardIndex` assigned by the game and include model ID and mutation data where available.
 - Deck-card choices use the deck index at the time of choice plus a card fingerprint. A consumer must reject a mismatched fingerprint rather than silently select a different card.
 - Rewards use reward-set ID and reward index plus the reward's semantic contents.
+- Merchant purchases include the entry's index in `MerchantInventory.AllEntries`, its
+  category (`character_card`, `colorless_card`, `relic`, or `potion`), and its index
+  within that category. The type, model ID, and cost are validation fingerprints rather
+  than substitutes for those indexes.
 - UI indexes alone are never sufficient when a semantic identifier is available.
 
 ## Initial state
@@ -167,6 +174,12 @@ N+2 reward.resolve   {"data":{"action_sequence":N,"success":true}}
 ```
 
 The initiating record is the action a simulator applies. Nested `choice.*` records answer choices opened while that action is suspended. A `*.resolve` record validates the eventual outcome and must reference its earlier initiating record through `data.action_sequence`; it does not apply the action a second time. The same rule covers rest choices, merchant card removal, and ordinary shop purchases that trigger follow-up choices.
+
+Card rewards use one combined choice-index space. Cards occupy indexes `0` through
+`cards.length - 1`; alternatives follow in the exact order presented by STS2. Each
+alternative is recorded as `{ "index": N, "option_id": "skip" }` (or another stable
+option ID such as `reroll` or `sacrifice`) so every value in `data.indexes` maps to one
+explicit offered object.
 
 ## State observations
 

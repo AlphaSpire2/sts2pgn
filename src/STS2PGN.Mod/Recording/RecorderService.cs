@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
+using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Entities.CardRewardAlternatives;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Models;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -249,21 +251,26 @@ internal static class RecorderService
             return;
         }
 
+        var cards = reward.Cards.Select((card, index) => new
+        {
+            index,
+            fingerprint = PortablePayloads.CardFingerprint(card),
+        }).ToArray();
+        string[] alternativeIds = CardRewardAlternative.Generate(reward)
+            .Select(alternative => alternative.OptionId.ToLowerInvariant())
+            .ToArray();
+
         ChoiceOffers[(player.NetId, choiceId)] = JsonSerializer.SerializeToElement(new
         {
             context = "card_reward",
             options = new
             {
-                cards = reward.Cards.Select((card, index) => new
+                cards,
+                alternatives = alternativeIds.Select((optionId, offset) => new
                 {
-                    index,
-                    fingerprint = PortablePayloads.CardFingerprint(card),
+                    index = cards.Length + offset,
+                    option_id = optionId,
                 }).ToArray(),
-                alternatives = new[]
-                {
-                    reward.CanSkip ? "skip" : null,
-                    reward.CanReroll ? "reroll" : null,
-                }.Where(value => value is not null).ToArray(),
             },
         });
     }
@@ -337,6 +344,7 @@ internal static class RecorderService
                     card_model = play.modelId.ToString(),
                     card = PortablePayloads.CardFingerprint(playedCard),
                     target_id = play.targetId,
+                    target = CombatTarget(play.targetId),
                 }, actor);
                 break;
             case NetUsePotionAction potion:
@@ -345,6 +353,7 @@ internal static class RecorderService
                     potion_slot = potion.potionIndex,
                     potion_model = PotionModel(actor, potion.potionIndex),
                     target_id = potion.targetId,
+                    target = CombatTarget(potion.targetId),
                     target_player = PlayerSlot(potion.targetPlayerId),
                     in_combat = potion.enqueuedInCombat,
                 }, actor);
@@ -555,6 +564,21 @@ internal static class RecorderService
         return player is not null && index < (uint)player.PotionSlots.Count
             ? player.PotionSlots[(int)index]?.Id.ToString()
             : null;
+    }
+
+    private static object? CombatTarget(uint? combatId)
+    {
+        if (!combatId.HasValue)
+        {
+            return null;
+        }
+
+        var creature = CombatManager.Instance.DebugOnlyGetState()?.GetCreature(combatId);
+        return new
+        {
+            combat_id = combatId.Value,
+            model_id = creature?.ModelId.ToString(),
+        };
     }
 
     private static void StopSession()

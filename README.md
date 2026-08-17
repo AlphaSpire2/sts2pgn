@@ -5,7 +5,7 @@ STS2PGN records Slay the Spire 2 runs as deterministic, human-readable traces in
 The long-term purpose is simulator conformance testing: record a run in the real game, feed the resulting `.sts2pgn` file to an external simulator, replay the same decisions, and identify the first state difference between the simulator and STS2.
 
 > [!IMPORTANT]
-> Phase 3 recorder implementation is complete against the current decompile. The portable core and durable append/finalization path are tested; the game-coupled assembly still needs to be compiled and smoke-tested with matching STS2 assemblies.
+> Phase 3 recorder implementation is complete against the current decompile. The portable core and durable append/finalization path are tested. The 0.4.1 game-coupled assembly and its strengthened identity fields still need a fresh in-game smoke trace built with matching STS2 assemblies.
 
 ## Architecture
 

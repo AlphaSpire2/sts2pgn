@@ -31,8 +31,8 @@ Legend:
 
 | STS2PGN kind | Authoritative source | Required payload | Status |
 |---|---|---|---|
-| `combat.play_card` | `NetPlayCardAction` / `PlayCardAction` | Player slot, combat-card ID, card model/mutations, optional target combat ID. | Event |
-| `combat.use_potion` | `NetUsePotionAction` / `UsePotionAction` | Player slot, potion slot/model, combat flag, creature/player target. | Event |
+| `combat.play_card` | `NetPlayCardAction` / `PlayCardAction` | Player slot, combat-card ID, card model/mutations, and target combat ID plus target model fingerprint. | Event |
+| `combat.use_potion` | `NetUsePotionAction` / `UsePotionAction` | Player slot, potion slot/model, combat flag, and creature target ID/model or player target slot. | Event |
 | `combat.discard_potion` | `NetDiscardPotionGameAction` | Player slot, potion slot/model, combat flag. | Event |
 | `combat.end_turn` | `NetEndPlayerTurnAction` | Player slot and turn number. | Event |
 | `combat.undo_end_turn` | `NetUndoEndPlayerTurnAction` | Player slot and turn number. | Event |
@@ -77,7 +77,7 @@ Nested rooms created by events are captured by the normal room stack and lifecyc
 |---|---|---|---|
 | `reward.claim` / `reward.resolve` | private accepted `RewardsSetSynchronizer.SelectRewardForPlayer(RewardsSetState, Reward)` | Emit set ID, reward index, portable reward contents, and offered cards before nested choice; correlate success afterward. | Direct |
 | `reward.skip` | private `SkipRewardsSetOnStackTopForPlayer` | Captures explicit skip while `BeforeLeavingRoom` automatic cleanup remains excluded. | Direct |
-| card reward choice | `PlayerChoiceReceived` plus `ReserveChoiceId` | `choice.index` stores every generated offered-card fingerprint and skip/reroll alternatives. | Event/Direct |
+| card reward choice | `PlayerChoiceReceived` plus `ReserveChoiceId` | `choice.index` stores every generated offered-card fingerprint and gives STS2's generated alternatives (including vanilla relic alternatives) explicit indexes in the same combined index space. | Event/Direct |
 | obtained/skipped card | `RewardSynchronizer.SyncLocalObtainedCard` / `SyncLocalSkippedCard` | Outcome validation; avoid duplicating the player action. | Direct |
 | obtained/skipped relic | corresponding `RewardSynchronizer` methods | Outcome validation. | Direct |
 | obtained/skipped potion | corresponding `RewardSynchronizer` methods | Outcome validation, including full-belt decisions. | Direct |
@@ -89,7 +89,7 @@ Nested rooms created by events are captured by the normal room stack and lifecyc
 
 | STS2PGN kind | Authoritative source | Strategy | Status |
 |---|---|---|---|
-| `shop.purchase` / `shop.purchase.resolve` | `Core.Entities.Merchant/MerchantEntry.cs`: `OnTryPurchaseWrapper` | Reproduce wrapper validation, then emit portable type/model/cost before effects and correlate the outcome. | Direct |
+| `shop.purchase` / `shop.purchase.resolve` | `Core.Entities.Merchant/MerchantEntry.cs`: `OnTryPurchaseWrapper` | Reproduce wrapper validation, then emit the pre-purchase flat inventory index, category/index, and portable type/model/cost before effects; correlate the outcome. | Direct |
 | `shop.remove_card` / `shop.remove_card.resolve` | `OneOffSynchronizer.DoLocalMerchantCardRemoval` plus `PlayerChoiceReceived` | Emit cost/cancelability before the deck choice; selected deck index/fingerprint follows; outcome is correlated afterward. | Direct/Event |
 | shop/rest close | proceed button opens the map | Presentation-only; the following authoritative `map.choose` advances the run. | Excluded |
 

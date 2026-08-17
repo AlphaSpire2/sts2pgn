@@ -33,6 +33,39 @@ public static class Sts2PgnValidator
             ["shop.remove_card.resolve"] = "shop.remove_card",
         };
 
+    private static readonly IReadOnlySet<string> PlayerDecisionKinds = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "act.next",
+        "choice.cards",
+        "choice.index",
+        "choice.player",
+        "choice.unknown",
+        "combat.discard_potion",
+        "combat.end_turn",
+        "combat.play_card",
+        "combat.undo_end_turn",
+        "combat.use_potion",
+        "event.advance",
+        "event.choose",
+        "event.crystal_sphere.click",
+        "event.crystal_sphere.proceed",
+        "event.crystal_sphere.set_tool",
+        "game.unknown_action",
+        "map.choose",
+        "rest.choose",
+        "rest.resolve",
+        "reward.claim",
+        "reward.resolve",
+        "reward.skip",
+        "room.proceed",
+        "shop.purchase",
+        "shop.purchase.resolve",
+        "shop.remove_card",
+        "shop.remove_card.resolve",
+        "treasure.choose_relic",
+        "treasure.skip_relic",
+    };
+
     public static Sts2PgnValidationResult Validate(RunRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
@@ -241,6 +274,8 @@ public static class Sts2PgnValidator
                 AddError(issues, "invalid_record_kind", $"Invalid record kind '{entry.Kind}'.", $"sequence:{entry.Sequence}");
             }
 
+            ValidateActionContract(entry, issues);
+
             if (entry.Kind == "state.observe")
             {
                 ValidateObservation(entry, sequences, issues);
@@ -252,6 +287,210 @@ public static class Sts2PgnValidator
             }
         }
     }
+
+    private static void ValidateActionContract(RunRecordEntry entry, List<ValidationIssue> issues)
+    {
+        if (PlayerDecisionKinds.Contains(entry.Kind))
+        {
+            ValidateActor(entry, issues);
+        }
+
+        if (entry.Kind is "combat.play_card" or "combat.use_potion")
+        {
+            ValidateCombatTarget(entry, issues);
+        }
+
+        if (entry.Kind == "shop.purchase")
+        {
+            ValidateShopPurchaseIdentity(entry, issues);
+        }
+
+        if (entry.Kind == "choice.index")
+        {
+            ValidateCardRewardOffer(entry, issues);
+        }
+    }
+
+    private static void ValidateActor(RunRecordEntry entry, List<ValidationIssue> issues)
+    {
+        if (!entry.Payload.TryGetProperty("actor", out JsonElement actor)
+            || actor.ValueKind != JsonValueKind.String
+            || !IsPlayerSlot(actor.GetString()!))
+        {
+            AddError(
+                issues,
+                "missing_action_actor",
+                $"{entry.Kind} requires an actor player slot such as 'p0'.",
+                $"sequence:{entry.Sequence}");
+        }
+    }
+
+    private static void ValidateCombatTarget(RunRecordEntry entry, List<ValidationIssue> issues)
+    {
+        string location = $"sequence:{entry.Sequence}";
+        if (!TryGetData(entry, out JsonElement data)
+            || !data.TryGetProperty("target_id", out JsonElement targetId))
+        {
+            AddError(issues, "invalid_combat_target", $"{entry.Kind} requires data.target_id.", location);
+            return;
+        }
+
+        if (targetId.ValueKind == JsonValueKind.Null)
+        {
+            if (!data.TryGetProperty("target", out JsonElement nullTarget)
+                || nullTarget.ValueKind != JsonValueKind.Null)
+            {
+                AddError(
+                    issues,
+                    "invalid_combat_target",
+                    $"{entry.Kind} must use a null target when target_id is null.",
+                    location);
+            }
+
+            return;
+        }
+
+        if (targetId.ValueKind != JsonValueKind.Number
+            || !targetId.TryGetUInt32(out uint combatId)
+            || !data.TryGetProperty("target", out JsonElement target)
+            || target.ValueKind != JsonValueKind.Object
+            || !target.TryGetProperty("combat_id", out JsonElement targetCombatId)
+            || targetCombatId.ValueKind != JsonValueKind.Number
+            || !targetCombatId.TryGetUInt32(out uint fingerprintCombatId)
+            || combatId != fingerprintCombatId
+            || !target.TryGetProperty("model_id", out JsonElement modelId)
+            || modelId.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(modelId.GetString()))
+        {
+            AddError(
+                issues,
+                "invalid_combat_target",
+                $"{entry.Kind} requires a target fingerprint with matching combat_id and non-empty model_id.",
+                location);
+        }
+    }
+
+    private static void ValidateShopPurchaseIdentity(RunRecordEntry entry, List<ValidationIssue> issues)
+    {
+        string location = $"sequence:{entry.Sequence}";
+        if (!TryGetData(entry, out JsonElement data)
+            || !HasNonNegativeInteger(data, "inventory_index")
+            || !HasNonNegativeInteger(data, "entry_index")
+            || !HasNonEmptyString(data, "entry_group")
+            || !HasNonEmptyString(data, "entry_type")
+            || !HasNonEmptyString(data, "model_id"))
+        {
+            AddError(
+                issues,
+                "invalid_shop_identity",
+                "shop.purchase requires inventory_index, entry_group, entry_index, entry_type, and model_id.",
+                location);
+        }
+    }
+
+    private static void ValidateCardRewardOffer(RunRecordEntry entry, List<ValidationIssue> issues)
+    {
+        if (!TryGetData(entry, out JsonElement data)
+            || !data.TryGetProperty("offered", out JsonElement offered)
+            || offered.ValueKind != JsonValueKind.Object
+            || !offered.TryGetProperty("context", out JsonElement context)
+            || context.ValueKind != JsonValueKind.String
+            || context.GetString() != "card_reward")
+        {
+            return;
+        }
+
+        string location = $"sequence:{entry.Sequence}";
+        if (!offered.TryGetProperty("options", out JsonElement options)
+            || options.ValueKind != JsonValueKind.Object
+            || !options.TryGetProperty("cards", out JsonElement cards)
+            || cards.ValueKind != JsonValueKind.Array
+            || !options.TryGetProperty("alternatives", out JsonElement alternatives)
+            || alternatives.ValueKind != JsonValueKind.Array)
+        {
+            AddError(
+                issues,
+                "invalid_card_reward_offer",
+                "A card_reward offer requires card and alternative arrays with explicit indexes.",
+                location);
+            return;
+        }
+
+        HashSet<int> offeredIndexes = [];
+        bool offerIsValid = true;
+        int expectedIndex = 0;
+        foreach (JsonElement card in cards.EnumerateArray())
+        {
+            offerIsValid &= TryAddOfferIndex(card, expectedIndex, offeredIndexes);
+            expectedIndex++;
+        }
+
+        foreach (JsonElement alternative in alternatives.EnumerateArray())
+        {
+            offerIsValid &= TryAddOfferIndex(alternative, expectedIndex, offeredIndexes)
+                && HasNonEmptyString(alternative, "option_id");
+            expectedIndex++;
+        }
+
+        if (!offerIsValid)
+        {
+            AddError(
+                issues,
+                "invalid_card_reward_offer",
+                "Card-reward cards and alternatives require contiguous indexes in presentation order; alternatives also require option_id.",
+                location);
+        }
+
+        if (!data.TryGetProperty("indexes", out JsonElement selectedIndexes)
+            || selectedIndexes.ValueKind != JsonValueKind.Array)
+        {
+            AddError(issues, "invalid_choice_indexes", "choice.index requires an indexes array.", location);
+            return;
+        }
+
+        foreach (JsonElement selected in selectedIndexes.EnumerateArray())
+        {
+            if (selected.ValueKind != JsonValueKind.Number
+                || !selected.TryGetInt32(out int selectedIndex)
+                || !offeredIndexes.Contains(selectedIndex))
+            {
+                AddError(
+                    issues,
+                    "unmapped_choice_index",
+                    "Every selected card-reward index must identify an explicitly recorded card or alternative.",
+                    location);
+                break;
+            }
+        }
+    }
+
+    private static bool TryGetData(RunRecordEntry entry, out JsonElement data) =>
+        entry.Payload.TryGetProperty("data", out data) && data.ValueKind == JsonValueKind.Object;
+
+    private static bool TryAddOfferIndex(JsonElement option, int expectedIndex, HashSet<int> indexes) =>
+        option.ValueKind == JsonValueKind.Object
+        && option.TryGetProperty("index", out JsonElement indexElement)
+        && indexElement.ValueKind == JsonValueKind.Number
+        && indexElement.TryGetInt32(out int index)
+        && index == expectedIndex
+        && indexes.Add(index);
+
+    private static bool HasNonNegativeInteger(JsonElement parent, string propertyName) =>
+        parent.TryGetProperty(propertyName, out JsonElement value)
+        && value.ValueKind == JsonValueKind.Number
+        && value.TryGetInt32(out int number)
+        && number >= 0;
+
+    private static bool HasNonEmptyString(JsonElement parent, string propertyName) =>
+        parent.ValueKind == JsonValueKind.Object
+        && parent.TryGetProperty(propertyName, out JsonElement value)
+        && value.ValueKind == JsonValueKind.String
+        && !string.IsNullOrWhiteSpace(value.GetString());
+
+    private static bool IsPlayerSlot(string value) =>
+        value.Length >= 2
+        && value[0] == 'p'
+        && value.AsSpan(1).IndexOfAnyExcept("0123456789") < 0;
 
     private static void ValidateResolve(
         RunRecordEntry entry,
