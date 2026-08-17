@@ -656,6 +656,15 @@ public static class Sts2PgnValidator
                 state,
                 issues);
         }
+
+
+        if (hasValidState
+            && state.TryGetProperty("scope", out JsonElement scope)
+            && scope.ValueKind == JsonValueKind.String
+            && scope.GetString() == "run.core")
+        {
+            ValidateLiveProjection(state, issues, location);
+        }
     }
 
     private static void ValidateRunStartProjection(
@@ -725,9 +734,18 @@ public static class Sts2PgnValidator
             || !HasInteger(run, "ascension")
             || !HasInteger(run, "act")
             || !HasInteger(run, "floor")
+            || !state.TryGetProperty("acts", out JsonElement acts)
+            || acts.ValueKind != JsonValueKind.Array
+            || !HasValidActs(acts)
             || !state.TryGetProperty("players", out JsonElement players)
             || players.ValueKind != JsonValueKind.Array
             || !HasValidRunStartPlayers(players)
+            || !state.TryGetProperty("rooms", out JsonElement rooms)
+            || rooms.ValueKind != JsonValueKind.Array
+            || !state.TryGetProperty("choices", out JsonElement choices)
+            || !HasValidChoices(choices)
+            || !state.TryGetProperty("special_event", out JsonElement specialEvent)
+            || specialEvent.ValueKind != JsonValueKind.Null
             || !state.TryGetProperty("combat", out JsonElement combat)
             || combat.ValueKind != JsonValueKind.Null)
         {
@@ -738,6 +756,64 @@ public static class Sts2PgnValidator
                 location);
         }
     }
+
+    private static void ValidateLiveProjection(
+        JsonElement state,
+        List<ValidationIssue> issues,
+        string location)
+    {
+        if (!state.TryGetProperty("run", out JsonElement run)
+            || run.ValueKind != JsonValueKind.Object
+            || !HasNonEmptyString(run, "seed")
+            || !HasInteger(run, "act")
+            || !HasInteger(run, "floor")
+            || !state.TryGetProperty("acts", out JsonElement acts)
+            || acts.ValueKind != JsonValueKind.Array
+            || !HasValidActs(acts)
+            || !state.TryGetProperty("players", out JsonElement players)
+            || players.ValueKind != JsonValueKind.Array
+            || !HasValidRunStartPlayers(players)
+            || !state.TryGetProperty("rooms", out JsonElement rooms)
+            || rooms.ValueKind != JsonValueKind.Array
+            || !state.TryGetProperty("choices", out JsonElement choices)
+            || !HasValidChoices(choices)
+            || !state.TryGetProperty("special_event", out JsonElement specialEvent)
+            || specialEvent.ValueKind is not (JsonValueKind.Null or JsonValueKind.Object)
+            || !state.TryGetProperty("combat", out JsonElement combat)
+            || combat.ValueKind is not (JsonValueKind.Null or JsonValueKind.Object))
+        {
+            AddError(
+                issues,
+                "invalid_live_projection",
+                "state.observe does not match projection version 1 scope run.core.",
+                location);
+        }
+    }
+
+    private static bool HasValidActs(JsonElement acts)
+    {
+        HashSet<int> indexes = [];
+        foreach (JsonElement act in acts.EnumerateArray())
+        {
+            if (act.ValueKind != JsonValueKind.Object
+                || !HasInteger(act, "index")
+                || !act.GetProperty("index").TryGetInt32(out int index)
+                || !indexes.Add(index)
+                || !HasNonEmptyString(act, "model_id"))
+            {
+                return false;
+            }
+        }
+
+        return indexes.Count > 0;
+    }
+
+    private static bool HasValidChoices(JsonElement choices) =>
+        choices.ValueKind == JsonValueKind.Object
+        && choices.TryGetProperty("player_choices", out JsonElement playerChoices)
+        && playerChoices.ValueKind == JsonValueKind.Array
+        && choices.TryGetProperty("rewards", out JsonElement rewards)
+        && rewards.ValueKind == JsonValueKind.Array;
 
     private static bool HasValidRunStartPlayers(JsonElement players)
     {

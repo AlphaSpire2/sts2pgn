@@ -35,6 +35,39 @@ internal static class InitialStateProjector
                     col = coord.col,
                     row = coord.row,
                 }).ToArray(),
+                map_history = save.MapPointHistory.Select((act, actIndex) => new
+                {
+                    act = actIndex,
+                    points = act.Select((point, floorIndex) => new
+                    {
+                        floor = floorIndex,
+                        type = PortablePayloads.Symbol(point.MapPointType),
+                        rooms = point.Rooms.Select((room, roomIndex) => new
+                        {
+                            index = roomIndex,
+                            type = PortablePayloads.Symbol(room.RoomType),
+                            model_id = PortablePayloads.ModelId(room.ModelId),
+                            monsters = room.MonsterIds.Select(PortablePayloads.ModelId).ToArray(),
+                            turns_taken = room.TurnsTaken,
+                        }).ToArray(),
+                        players = point.PlayerStats.Select(player => new
+                        {
+                            slot = playerSlots.TryGetValue(player.PlayerId, out string? slot) ? slot : null,
+                            current_hp = player.CurrentHp,
+                            max_hp = player.MaxHp,
+                            current_gold = player.CurrentGold,
+                            gold_gained = player.GoldGained,
+                            gold_spent = player.GoldSpent,
+                            gold_lost = player.GoldLost,
+                            gold_stolen = player.GoldStolen,
+                            stolen_loot = player.StolenLoot,
+                            damage_taken = player.DamageTaken,
+                            hp_healed = player.HpHealed,
+                            max_hp_gained = player.MaxHpGained,
+                            max_hp_lost = player.MaxHpLost,
+                        }).ToArray(),
+                    }).ToArray(),
+                }).ToArray(),
                 modifiers = save.Modifiers.Select(modifier => new
                 {
                     model_id = PortablePayloads.ModelId(modifier.Id),
@@ -60,10 +93,82 @@ internal static class InitialStateProjector
                     freed_repy = save.ExtraFields.FreedRepy,
                 },
             },
+            acts = save.Acts.Select((act, index) => ProjectAct(act, index)).ToArray(),
             players = save.Players.Select(player => ProjectPlayer(player, playerSlots)).ToArray(),
+            rooms = Array.Empty<object>(),
+            choices = new
+            {
+                player_choices = Array.Empty<object>(),
+                rewards = Array.Empty<object>(),
+                events = Array.Empty<object>(),
+                rest = (object?)null,
+                treasure = (object?)null,
+                merchant = (object?)null,
+            },
+            special_event = (object?)null,
             combat = (object?)null,
         });
     }
+
+    private static object ProjectAct(SerializableActModel act, int index)
+    {
+        SerializableRoomSet rooms = act.SerializableRooms;
+        return new
+        {
+            index,
+            model_id = PortablePayloads.ModelId(act.Id),
+            rooms = new
+            {
+                events = rooms.EventIds.Select(PortablePayloads.ModelId).ToArray(),
+                events_visited = rooms.EventsVisited,
+                normal_encounters = rooms.NormalEncounterIds.Select(PortablePayloads.ModelId).ToArray(),
+                normal_encounters_visited = rooms.NormalEncountersVisited,
+                elite_encounters = rooms.EliteEncounterIds.Select(PortablePayloads.ModelId).ToArray(),
+                elite_encounters_visited = rooms.EliteEncountersVisited,
+                boss_encounters_visited = rooms.BossEncountersVisited,
+                boss = PortablePayloads.ModelId(rooms.BossId),
+                second_boss = PortablePayloads.ModelId(rooms.SecondBossId),
+                ancient = PortablePayloads.ModelId(rooms.AncientId),
+            },
+            saved_map = IsNullMap(act.SavedMap) ? null : ProjectMap(act.SavedMap!),
+        };
+    }
+
+    private static bool IsNullMap(SerializableActMap? map) =>
+        map is null || (map.GridWidth == 0 && map.GridHeight == 0 && map.Points.Count == 0);
+
+    internal static object ProjectMap(SerializableActMap map) => new
+    {
+        width = map.GridWidth,
+        height = map.GridHeight,
+        start = ProjectMapPoint(map.StartingPoint),
+        boss = ProjectMapPoint(map.BossPoint),
+        second_boss = map.SecondBossPoint is null ? null : ProjectMapPoint(map.SecondBossPoint),
+        start_nodes = map.StartMapPointCoords?
+            .OrderBy(coord => coord.row)
+            .ThenBy(coord => coord.col)
+            .Select(coord => new { col = coord.col, row = coord.row })
+            .ToArray(),
+        points = map.Points
+            .OrderBy(point => point.Coord.row)
+            .ThenBy(point => point.Coord.col)
+            .Select(ProjectMapPoint)
+            .ToArray(),
+    };
+
+    private static object ProjectMapPoint(SerializableMapPoint point) => new
+    {
+        id = $"{point.Coord.col},{point.Coord.row}",
+        col = point.Coord.col,
+        row = point.Coord.row,
+        type = PortablePayloads.Symbol(point.PointType),
+        can_modify = point.CanBeModified,
+        children = (point.ChildCoords ?? [])
+            .OrderBy(coord => coord.row)
+            .ThenBy(coord => coord.col)
+            .Select(coord => new { col = coord.col, row = coord.row })
+            .ToArray(),
+    };
 
     private static object ProjectPlayer(
         SerializablePlayer player,

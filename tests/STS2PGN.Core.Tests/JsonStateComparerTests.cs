@@ -33,6 +33,36 @@ public sealed class JsonStateComparerTests
         Assert.Equal(79, difference.Actual!.Value.GetInt32());
     }
 
+    [Theory]
+    [InlineData("acts", "index", "1")]
+    [InlineData("rooms", "stack_depth", "1")]
+    public void RunCollectionsAreComparedByStableIdentity(string property, string key, string expectedPath)
+    {
+        using JsonDocument expected = JsonDocument.Parse(
+            $"{{\"{property}\":[{{\"{key}\":0,\"value\":10}},{{\"{key}\":1,\"value\":20}}]}}");
+        using JsonDocument actual = JsonDocument.Parse(
+            $"{{\"{property}\":[{{\"{key}\":1,\"value\":21}},{{\"{key}\":0,\"value\":10}}]}}");
+
+        StateDifference difference = Assert.Single(
+            JsonStateComparer.Compare(expected.RootElement, actual.RootElement).Differences);
+
+        Assert.Equal($"/{property}/{expectedPath}/value", difference.Path);
+    }
+
+    [Fact]
+    public void NestedLiveCollectionsAreComparedByStableIdentity()
+    {
+        using JsonDocument expected = JsonDocument.Parse(
+            "{\"combat\":{\"players\":[{\"slot\":\"p0\",\"energy\":3},{\"slot\":\"p1\",\"energy\":2}]}} ");
+        using JsonDocument actual = JsonDocument.Parse(
+            "{\"combat\":{\"players\":[{\"slot\":\"p1\",\"energy\":2},{\"slot\":\"p0\",\"energy\":1}]}} ");
+
+        StateDifference difference = Assert.Single(
+            JsonStateComparer.Compare(expected.RootElement, actual.RootElement).Differences);
+
+        Assert.Equal("/combat/players/p0/energy", difference.Path);
+    }
+
     [Fact]
     public void MissingAndNullAreDistinct()
     {

@@ -12,6 +12,6 @@
 [StartedAt "2026-01-01T00:00:00Z"]
 [Result "*"]
 
-1 run.start {"actor":null,"location":{"act":0,"floor":0},"data":{"source_snapshot":{"schema_version":0,"encoding":"sts2-save-json","data":{}},"state":{"scope":"run_start.core","run":{"seed":"EXAMPLESEED","mode":"standard","ascension":0,"act":0,"floor":0},"players":[{"slot":"p0","character_model":"CHARACTER.IRONCLAD"}],"combat":null}},"extensions":{}}
-2 state.observe {"after":1,"context":"run.start","digest":"sha256:b9b1e671af34c4f8d060373202a8c33acaa888690093b1cd594193b745280d89","projection_version":1,"state":{"scope":"run_start.core","run":{"seed":"EXAMPLESEED","mode":"standard","ascension":0,"act":0,"floor":0},"players":[{"slot":"p0","character_model":"CHARACTER.IRONCLAD"}],"combat":null}}
+1 run.start {"actor":null,"location":{"act":0,"floor":0},"data":{"source_snapshot":{"schema_version":0,"encoding":"sts2-save-json","data":{}},"state":{"scope":"run_start.core","run":{"seed":"EXAMPLESEED","mode":"standard","ascension":0,"act":0,"floor":0},"acts":[{"index":0,"model_id":"ACT.OVERGROWTH"}],"players":[{"slot":"p0","character_model":"CHARACTER.IRONCLAD"}],"rooms":[],"choices":{"player_choices":[],"rewards":[]},"special_event":null,"combat":null}},"extensions":{}}
+2 state.observe {"after":1,"context":"run.start","digest":"sha256:504542b3d1b67b93fa2bcc38ac23bff4b8e0d82bc83e27abb08b68b1e0eb57b7","projection_version":1,"state":{"scope":"run_start.core","run":{"seed":"EXAMPLESEED","mode":"standard","ascension":0,"act":0,"floor":0},"acts":[{"index":0,"model_id":"ACT.OVERGROWTH"}],"players":[{"slot":"p0","character_model":"CHARACTER.IRONCLAD"}],"rooms":[],"choices":{"player_choices":[],"rewards":[]},"special_event":null,"combat":null}}
 *

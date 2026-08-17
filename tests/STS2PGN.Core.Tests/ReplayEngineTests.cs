@@ -90,6 +90,27 @@ public sealed class ReplayEngineTests
     }
 
     [Fact]
+    public async Task ReplayComparesObservationAfterRunFinish()
+    {
+        JsonElement state = State(80);
+        string digest = CanonicalJson.ComputeSha256(state);
+        RunRecord record = TestRecordFactory.CreateBuilder("DEFEAT")
+            .AppendJson("run.start", "{\"data\":{}}")
+            .AppendJson("run.finish", "{\"data\":{\"result\":\"DEFEAT\"}}")
+            .AppendJson(
+                "state.observe",
+                $"{{\"after\":2,\"context\":\"run.end\",\"digest\":\"{digest}\",\"projection_version\":1,\"state\":{state.GetRawText()}}}")
+            .Build(RunResult.Defeat);
+        FakeSimulator simulator = new(state, RunResult.Defeat);
+
+        ReplayExecutionResult result = await new ReplayEngine().ExecuteAsync(record, simulator);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(3, result.LastMatchingObservationSequence);
+        Assert.Equal("run.end", Assert.Single(simulator.ObservationRequests).Context);
+    }
+
+    [Fact]
     public async Task ReplayRejectsInvalidTraceBeforeCallingAdapter()
     {
         RunRecord invalid = new(
@@ -134,10 +155,23 @@ public sealed class ReplayEngineTests
     private static JsonElement State(int hp) => JsonSerializer.SerializeToElement(new
     {
         scope = "run.core",
+        run = new { seed = "TEST", act = 0, floor = 1 },
+        acts = new[]
+        {
+            new { index = 0, model_id = "ACT.OVERGROWTH" },
+        },
         players = new[]
         {
-            new { slot = "p0", current_hp = hp },
+            new { slot = "p0", character_model = "CHARACTER.IRONCLAD", current_hp = hp },
         },
+        rooms = Array.Empty<object>(),
+        choices = new
+        {
+            player_choices = Array.Empty<object>(),
+            rewards = Array.Empty<object>(),
+        },
+        special_event = (object?)null,
+        combat = (object?)null,
     });
 
     private sealed class FakeSimulator(JsonElement state, RunResult result) : IReplaySimulatorAdapter

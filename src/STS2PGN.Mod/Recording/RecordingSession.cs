@@ -24,6 +24,8 @@ internal sealed class RecordingSession : IDisposable
 
     public string Path { get; }
 
+    public long RunStartSequence { get; private set; }
+
     private RecordingSession(
         RunState state,
         Dictionary<ulong, string> playerSlots,
@@ -93,7 +95,25 @@ internal sealed class RecordingSession : IDisposable
         }
     }
 
-    public void Complete(RunResult result)
+    public JsonElement CaptureState(JsonElement recorderState) =>
+        LiveStateProjector.Capture(_state, _playerSlots, recorderState);
+
+    public long? Observe(long after, string context, JsonElement state)
+    {
+        StateObservationPayload observation = StateObservationFactory.Create(after, context, state);
+        JsonElement payload = JsonSerializer.SerializeToElement(observation);
+        lock (_gate)
+        {
+            if (!_disposed && !_writer.IsCompleted)
+            {
+                return _writer.Append("state.observe", payload).Sequence;
+            }
+
+            return null;
+        }
+    }
+
+    public void Complete(RunResult result, JsonElement terminalState)
     {
         lock (_gate)
         {
@@ -102,7 +122,12 @@ internal sealed class RecordingSession : IDisposable
                 return;
             }
 
-            Record("run.finish", new { result = result.ToToken() });
+            long? finishSequence = Record("run.finish", new { result = result.ToToken() });
+            if (finishSequence.HasValue)
+            {
+                Observe(finishSequence.Value, "run.end", terminalState);
+            }
+
             _writer.Complete(result);
             _writer.Dispose();
             _file.Dispose();
@@ -144,6 +169,7 @@ internal sealed class RecordingSession : IDisposable
 
         if (runStartSequence.HasValue)
         {
+            RunStartSequence = runStartSequence.Value;
             StateObservationPayload observation = StateObservationFactory.Create(
                 runStartSequence.Value,
                 "run.start",

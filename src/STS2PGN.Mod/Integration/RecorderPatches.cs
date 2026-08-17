@@ -5,6 +5,7 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Models;
@@ -80,11 +81,63 @@ internal static class EventChoicePatch
     private static void Prefix(int index) => RecorderService.RecordEventChoice(index);
 }
 
+[HarmonyPatch(typeof(EventOption), nameof(EventOption.Chosen))]
+internal static class EventChoiceSettledPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(ref Task __result) => __result = ObserveWhenComplete(__result);
+
+    private static async Task ObserveWhenComplete(Task choice)
+    {
+        await choice;
+        RecorderService.ObserveEventChoiceSettled();
+    }
+}
+
 [HarmonyPatch(typeof(NAncientEventLayout), "OnDialogueHitboxClicked")]
 internal static class EventDialogueAdvancePatch
 {
     [HarmonyPrefix]
     private static void Prefix() => RecorderService.RecordEventAdvance();
+
+    [HarmonyPostfix]
+    private static void Postfix() => RecorderService.ObserveEventAdvanceSettled();
+}
+
+[HarmonyPatch(typeof(RunManager), nameof(RunManager.GenerateMap))]
+internal static class GeneratedMapPatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(ref Task __result) => __result = ObserveWhenComplete(__result);
+
+    private static async Task ObserveWhenComplete(Task generation)
+    {
+        await generation;
+        RecorderService.ObserveMapGenerated();
+    }
+}
+
+[HarmonyPatch(typeof(RewardsSetSynchronizer), nameof(RewardsSetSynchronizer.BeginRewardsSet))]
+internal static class RewardsSetLifetimePatch
+{
+    [HarmonyPostfix]
+    private static void Postfix(RewardsSet set, ref Task __result)
+    {
+        RecorderService.ExecuteSafely("capturing reward offer", () => RecorderService.BeginRewardsSet(set));
+        __result = ObserveWhenComplete(__result, set);
+    }
+
+    private static async Task ObserveWhenComplete(Task lifetime, RewardsSet set)
+    {
+        try
+        {
+            await lifetime;
+        }
+        finally
+        {
+            RecorderService.ExecuteSafely("capturing completed reward set", () => RecorderService.EndRewardsSet(set));
+        }
+    }
 }
 
 [HarmonyPatch(typeof(RunManager), nameof(RunManager.ProceedFromTerminalRewardsScreen))]
@@ -301,11 +354,10 @@ internal sealed record ShopPurchaseSnapshot(
         bool succeeded = await purchase;
         if (snapshot.ActionSequence.HasValue)
         {
-            RecorderService.TryRecord("shop.purchase.resolve", new
-            {
-                action_sequence = snapshot.ActionSequence.Value,
-                success = succeeded,
-            }, snapshot.PlayerId);
+            RecorderService.RecordShopPurchaseResolution(
+                snapshot.ActionSequence.Value,
+                snapshot.PlayerId,
+                succeeded);
         }
 
         return succeeded;
@@ -457,51 +509,52 @@ internal static class CrystalSphereStartPatch
     [HarmonyPostfix]
     private static void Postfix(
         CrystalSphereMinigame __instance,
-        Player owner,
-        MegaCrit.Sts2.Core.Random.Rng rng)
+        Player owner)
     {
-        RecorderService.ExecuteSafely("capturing Crystal Sphere board", () =>
-            RecorderService.TryRecord("event.crystal_sphere.start", new
-        {
-            grid = new { width = __instance.GridSize.X, height = __instance.GridSize.Y },
-            divinations = __instance.DivinationCount,
-            rng = new { seed = rng.Seed, counter = rng.Counter },
-            initial_tool = ToolName(__instance.CrystalSphereTool),
-            placed_all_items = __instance.PlacedAllItems,
-            cells = Enumerable.Range(0, __instance.GridSize.X)
-                .SelectMany(x => Enumerable.Range(0, __instance.GridSize.Y).Select(y => new
-                {
-                    x,
-                    y,
-                    is_hidden = __instance.cells[x, y].IsHidden,
-                    item_index = __instance.cells[x, y].Item is { } cellItem
-                        ? Enumerable.Range(0, __instance.Items.Count)
-                            .First(index => ReferenceEquals(__instance.Items[index], cellItem))
-                        : (int?)null,
-                }))
-                .ToArray(),
-            items = __instance.Items.Select(item =>
-            {
-                SerializableCrystalSphereItem serializable = item.ToSerializable();
-                return new
-                {
-                    type = PortablePayloads.Symbol(serializable.type),
-                    position = new { x = item.Position.X, y = item.Position.Y },
-                    size = new { width = item.Size.X, height = item.Size.Y },
-                    is_good = item.IsGood,
-                    card_rarity = serializable.type == CrystalSphereItemType.CardReward
-                        ? PortablePayloads.Symbol(serializable.cardRarity)
-                        : null,
-                    potion_rarity = serializable.type == CrystalSphereItemType.Potion
-                        ? PortablePayloads.Symbol(serializable.potionRarity)
-                        : null,
-                    is_big_gold = serializable.type == CrystalSphereItemType.Gold
-                        ? serializable.isBigGold
-                        : null as bool?,
-                };
-            }).ToArray(),
-        }, owner.NetId));
+        RecorderService.RecordCrystalSphereStart(ProjectState(__instance), owner.NetId);
     }
+
+    internal static object ProjectState(CrystalSphereMinigame minigame) => new
+    {
+        kind = "crystal_sphere",
+        grid = new { width = minigame.GridSize.X, height = minigame.GridSize.Y },
+        divinations = minigame.DivinationCount,
+        rng = new { seed = minigame.Rng.Seed, counter = minigame.Rng.Counter },
+        tool = ToolName(minigame.CrystalSphereTool),
+        placed_all_items = minigame.PlacedAllItems,
+        cells = Enumerable.Range(0, minigame.GridSize.X)
+            .SelectMany(x => Enumerable.Range(0, minigame.GridSize.Y).Select(y => new
+            {
+                x,
+                y,
+                is_hidden = minigame.cells[x, y].IsHidden,
+                item_index = minigame.cells[x, y].Item is { } cellItem
+                    ? Enumerable.Range(0, minigame.Items.Count)
+                        .First(index => ReferenceEquals(minigame.Items[index], cellItem))
+                    : (int?)null,
+            }))
+            .ToArray(),
+        items = minigame.Items.Select(item =>
+        {
+            SerializableCrystalSphereItem serializable = item.ToSerializable();
+            return new
+            {
+                type = PortablePayloads.Symbol(serializable.type),
+                position = new { x = item.Position.X, y = item.Position.Y },
+                size = new { width = item.Size.X, height = item.Size.Y },
+                is_good = item.IsGood,
+                card_rarity = serializable.type == CrystalSphereItemType.CardReward
+                    ? PortablePayloads.Symbol(serializable.cardRarity)
+                    : null,
+                potion_rarity = serializable.type == CrystalSphereItemType.Potion
+                    ? PortablePayloads.Symbol(serializable.potionRarity)
+                    : null,
+                is_big_gold = serializable.type == CrystalSphereItemType.Gold
+                    ? serializable.isBigGold
+                    : null as bool?,
+            };
+        }).ToArray(),
+    };
 
     internal static string ToolName(CrystalSphereMinigame.CrystalSphereToolType tool) =>
         PortablePayloads.Symbol(tool);
@@ -511,8 +564,12 @@ internal static class CrystalSphereStartPatch
 internal static class CrystalSphereToolPatch
 {
     [HarmonyPostfix]
-    private static void Postfix(CrystalSphereMinigame.CrystalSphereToolType tool) =>
-        RecorderService.RecordCrystalSphereTool(CrystalSphereStartPatch.ToolName(tool));
+    private static void Postfix(
+        CrystalSphereMinigame __instance,
+        CrystalSphereMinigame.CrystalSphereToolType tool) =>
+        RecorderService.RecordCrystalSphereTool(
+            CrystalSphereStartPatch.ToolName(tool),
+            CrystalSphereStartPatch.ProjectState(__instance));
 }
 
 [HarmonyPatch(typeof(CrystalSphereMinigame), nameof(CrystalSphereMinigame.CellClicked))]
@@ -526,6 +583,16 @@ internal static class CrystalSphereCellPatch
                 clickedCell.Y,
                 CrystalSphereStartPatch.ToolName(__instance.CrystalSphereTool),
                 __instance.DivinationCount));
+
+    [HarmonyPostfix]
+    private static void Postfix(CrystalSphereMinigame __instance, ref Task __result) =>
+        __result = ObserveWhenComplete(__result, __instance);
+
+    private static async Task ObserveWhenComplete(Task click, CrystalSphereMinigame minigame)
+    {
+        await click;
+        RecorderService.ObserveCrystalSphereClickSettled(CrystalSphereStartPatch.ProjectState(minigame));
+    }
 }
 
 [HarmonyPatch(typeof(NCrystalSphereScreen), "OnProceedButtonPressed")]

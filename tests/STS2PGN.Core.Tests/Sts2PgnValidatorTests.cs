@@ -108,7 +108,7 @@ public sealed class Sts2PgnValidatorTests
     [Fact]
     public void ValidatorAcceptsMatchingRunStartProjection()
     {
-        const string stateJson = "{\"scope\":\"run_start.core\",\"run\":{\"seed\":\"TEST\",\"mode\":\"standard\",\"ascension\":0,\"act\":0,\"floor\":0},\"players\":[{\"slot\":\"p0\",\"character_model\":\"CHARACTER.IRONCLAD\"}],\"combat\":null}";
+        const string stateJson = "{\"scope\":\"run_start.core\",\"run\":{\"seed\":\"TEST\",\"mode\":\"standard\",\"ascension\":0,\"act\":0,\"floor\":0},\"acts\":[{\"index\":0,\"model_id\":\"ACT.OVERGROWTH\"}],\"players\":[{\"slot\":\"p0\",\"character_model\":\"CHARACTER.IRONCLAD\"}],\"rooms\":[],\"choices\":{\"player_choices\":[],\"rewards\":[]},\"special_event\":null,\"combat\":null}";
         using System.Text.Json.JsonDocument state = System.Text.Json.JsonDocument.Parse(stateJson);
         StateObservationPayload observation = StateObservationFactory.Create(1, "run.start", state.RootElement);
         RunRecord record = TestRecordFactory.CreateBuilder()
@@ -122,7 +122,7 @@ public sealed class Sts2PgnValidatorTests
     [Fact]
     public void ValidatorRejectsMismatchedRunStartProjection()
     {
-        const string observedState = "{\"scope\":\"run_start.core\",\"run\":{\"seed\":\"TEST\",\"mode\":\"standard\",\"ascension\":0,\"act\":0,\"floor\":0},\"players\":[{\"slot\":\"p0\",\"character_model\":\"CHARACTER.IRONCLAD\"}],\"combat\":null}";
+        const string observedState = "{\"scope\":\"run_start.core\",\"run\":{\"seed\":\"TEST\",\"mode\":\"standard\",\"ascension\":0,\"act\":0,\"floor\":0},\"acts\":[{\"index\":0,\"model_id\":\"ACT.OVERGROWTH\"}],\"players\":[{\"slot\":\"p0\",\"character_model\":\"CHARACTER.IRONCLAD\"}],\"rooms\":[],\"choices\":{\"player_choices\":[],\"rewards\":[]},\"special_event\":null,\"combat\":null}";
         using System.Text.Json.JsonDocument state = System.Text.Json.JsonDocument.Parse(observedState);
         StateObservationPayload observation = StateObservationFactory.Create(1, "run.start", state.RootElement);
         RunRecord record = TestRecordFactory.CreateBuilder()
@@ -150,6 +150,36 @@ public sealed class Sts2PgnValidatorTests
         Assert.Contains(
             Sts2PgnValidator.Validate(record).Errors,
             issue => issue.Code == "unsupported_projection_version");
+    }
+
+    [Fact]
+    public void ValidatorAcceptsCompleteLiveProjection()
+    {
+        const string stateJson = "{\"scope\":\"run.core\",\"run\":{\"seed\":\"TEST\",\"act\":0,\"floor\":1},\"acts\":[{\"index\":0,\"model_id\":\"ACT.OVERGROWTH\"}],\"players\":[{\"slot\":\"p0\",\"character_model\":\"CHARACTER.IRONCLAD\"}],\"rooms\":[],\"choices\":{\"player_choices\":[],\"rewards\":[]},\"special_event\":null,\"combat\":null}";
+        using System.Text.Json.JsonDocument state = System.Text.Json.JsonDocument.Parse(stateJson);
+        StateObservationPayload observation = StateObservationFactory.Create(1, "room.enter", state.RootElement);
+        RunRecord record = TestRecordFactory.CreateBuilder()
+            .AppendJson("run.start", "{}")
+            .Append("state.observe", System.Text.Json.JsonSerializer.SerializeToElement(observation))
+            .Build();
+
+        Assert.True(Sts2PgnValidator.Validate(record).IsValid);
+    }
+
+    [Fact]
+    public void ValidatorRejectsIncompleteLiveProjection()
+    {
+        const string stateJson = "{\"scope\":\"run.core\",\"run\":{\"seed\":\"TEST\",\"act\":0,\"floor\":1}}";
+        using System.Text.Json.JsonDocument state = System.Text.Json.JsonDocument.Parse(stateJson);
+        StateObservationPayload observation = StateObservationFactory.Create(1, "room.enter", state.RootElement);
+        RunRecord record = TestRecordFactory.CreateBuilder()
+            .AppendJson("run.start", "{}")
+            .Append("state.observe", System.Text.Json.JsonSerializer.SerializeToElement(observation))
+            .Build();
+
+        Assert.Contains(
+            Sts2PgnValidator.Validate(record).Errors,
+            issue => issue.Code == "invalid_live_projection");
     }
 
     [Fact]

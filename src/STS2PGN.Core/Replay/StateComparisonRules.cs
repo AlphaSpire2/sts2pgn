@@ -10,8 +10,14 @@ public sealed class StateComparisonRules
 
     public static StateComparisonRules Default { get; } = new(new Dictionary<string, string>(StringComparer.Ordinal)
     {
+        ["/acts"] = "index",
         ["/players"] = "slot",
+        ["/rooms"] = "stack_depth",
+        ["/choices/player_choices"] = "id",
+        ["/choices/rewards"] = "id",
+        ["/combat/players"] = "slot",
         ["/combat/creatures"] = "combat_id",
+        ["/run/map/points"] = "id",
     });
 
     public StateComparisonRules(IReadOnlyDictionary<string, string>? arrayKeys = null)
