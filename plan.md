@@ -6,6 +6,7 @@
 - Phase 2 completed: portable trace model, append-oriented builder, streaming parser, deterministic writer, validation, canonical JSON/SHA-256 hashing, forward-compatible unknown records, crash-prefix recovery, and automated tests.
 - Phase 3 completed and trace-validated with recorder 0.4.2: the recorder captures the supported single-player decision surface, writes portable fingerprints and correctly ordered nested operations, handles Crystal Sphere explicitly, durably flushes each record, and finalizes results atomically.
 - Phase 4 underway: recorder 0.5.0 implements the canonical `run_start.core` projection, embeds it in `run.start`, and emits its first authoritative `state.observe` digest. Later room, reward, turn, and settled-action scopes remain pending.
+- Phase 5 underway: the portable Core now provides an ordered replay timeline, simulator-adapter contract, canonical state comparison, and first-divergence/result reporting. The STS2-coupled validation replayer remains pending on the later Phase 4 scopes and matching game assemblies.
 
 ## Goal
 
@@ -267,9 +268,9 @@ Deliverable: a portable authoritative-state contract that lets a simulator detec
 
 ### Phase 5: Replay and simulator-consumer contract
 
-1. Define a game-independent action iterator and observation-comparison API for simulator integrations.
-2. Document how a simulator reconstructs initial state, applies an action, waits for its own state to settle, and compares the resulting state.
-3. Provide structured divergence output containing the first failing sequence, preceding action, expected observation, simulated observation, and field-level differences.
+1. **Implemented:** define a game-independent action iterator and observation-comparison API for simulator integrations.
+2. **Implemented:** document how a simulator reconstructs initial state, applies an action, waits for its own state to settle, and compares the resulting state.
+3. **Implemented:** provide structured first-divergence output containing the failing sequence, preceding action, expected observation, simulated observation, digests, context, and field-level expected/actual differences.
 4. Add a deliberate in-game replay entry point as a completeness-validation harness that cannot overwrite or submit a normal run accidentally.
 5. Parse and validate the selected `.sts2pgn` file.
 6. Check game version, game commit, model database hash, and gameplay-affecting mod compatibility before in-game loading.

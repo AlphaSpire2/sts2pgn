@@ -5,7 +5,7 @@ STS2PGN records Slay the Spire 2 runs as deterministic, human-readable traces in
 The long-term purpose is simulator conformance testing: record a run in the real game, feed the resulting `.sts2pgn` file to an external simulator, replay the same decisions, and identify the first state difference between the simulator and STS2.
 
 > [!IMPORTANT]
-> Phase 3 is trace-validated. Phase 4 is underway: recorder 0.5.0 adds the first canonical portable state and authoritative digest at run start. The game-coupled assembly still needs to be built and smoke-tested with matching STS2 assemblies.
+> Phase 3 is trace-validated. Phase 4 is underway: recorder 0.5.0 adds the first canonical portable state and authoritative digest at run start. Phase 5 now includes a portable simulator replay engine; the in-game validation replayer and later state scopes remain pending. The game-coupled assembly still needs to be built and smoke-tested with matching STS2 assemblies.
 
 ## Architecture
 
@@ -151,6 +151,27 @@ string text = Sts2PgnWriter.Write(record);
 `Sts2PgnParser` preserves unknown tags, action kinds, and payload properties. By default it recovers a valid prefix when only the unterminated final JSON record was truncated. Set `RecoverTruncatedFinalLine` to `false` for strict archival validation.
 
 `CanonicalJson.ComputeSha256` sorts object properties and normalizes JSON numbers before hashing portable state observations.
+
+Run a validated trace through a simulator adapter:
+
+```csharp
+using STS2PGN.Replay;
+
+IReplaySimulatorAdapter simulator = new MySts2SimulatorAdapter();
+ReplayExecutionResult replay = await new ReplayEngine().ExecuteAsync(record, simulator);
+
+if (!replay.Succeeded)
+{
+    Console.Error.WriteLine($"{replay.Failure!.Kind}: {replay.Failure.Message}");
+}
+```
+
+`ReplayEngine` validates compatibility and ordering, initializes the adapter from
+`run.start`, forwards every later non-observation record, requests normalized simulator
+state at each `state.observe`, and stops at the first illegal action, state mismatch, or
+terminal-result mismatch. `ReplayTimeline` is available when an integration only needs
+the ordered, role-classified record stream. See the replay contract for the complete
+adapter lifecycle and divergence format.
 
 ## Format status
 

@@ -67,6 +67,36 @@ verify terminal result
 
 Consumers must not use a later authoritative observation to repair simulated state during a normal conformance run. A separate diagnostic mode may resynchronize after reporting a mismatch, but must label all subsequent comparisons as post-divergence.
 
+## Portable consumer API
+
+`STS2PGN.Core` implements this algorithm with `ReplayEngine` and
+`IReplaySimulatorAdapter`. The engine owns trace validation, record ordering, canonical
+comparison, result comparison, and first-failure reporting. The adapter owns only the
+simulator-specific behavior:
+
+1. `CheckCompatibilityAsync` declares whether the simulator supports the trace metadata.
+2. `InitializeAsync` reconstructs simulator state from the complete `run.start` record.
+3. `ConsumeAsync` applies each later non-observation record and settles its automatic effects.
+4. `CaptureStateAsync` returns the simulator's normalized state for an observation request.
+5. `GetResultAsync` returns the simulator's terminal result.
+
+Every record is preserved by `ReplayTimeline`. It assigns one processing role without
+changing the original kind or payload: initialization, action, resolution, lifecycle,
+observation, or terminal. Unknown future kinds default to actions so adapters can either
+implement them or reject them explicitly.
+
+An observation request contains its sequence, preceding action sequence, context,
+projection version, and optional scope. It deliberately does not expose the expected
+state to the adapter. The adapter must derive state from its own simulation; the engine
+then hashes and compares that state with the authoritative observation. This prevents a
+consumer from accidentally using an observation to repair the simulation it is testing.
+
+Objects compare independent of property order and JSON numbers compare canonically.
+Arrays are ordered unless a projection rule gives them a stable key. The default keyed
+paths are `/players` by `slot` and `/combat/creatures` by `combat_id`. Differences use
+JSON Pointer paths, preserve the distinction between a missing value and JSON `null`,
+and are capped by `ReplayEngineOptions.MaximumDifferences`.
+
 ## Settled-state boundary
 
 An action is settled when all deterministic consequences that must occur before the next player decision have completed.
@@ -126,16 +156,29 @@ A divergence report should contain:
   "sequence": 42,
   "after_action": 41,
   "action_kind": "combat.play_card",
+  "action_payload": {
+    "actor": "p0",
+    "data": { "card_combat_id": 7, "target_combat_id": "m0" }
+  },
   "context": "combat.action_settled",
   "expected_digest": "sha256:...",
   "actual_digest": "sha256:...",
+  "expected_state": {
+    "combat": { "creatures": [{ "combat_id": "m0", "hp": 31 }] }
+  },
+  "actual_state": {
+    "combat": { "creatures": [{ "combat_id": "m0", "hp": 32 }] }
+  },
   "differences": [
     {
       "path": "/combat/creatures/m0/hp",
       "expected": 31,
-      "actual": 32
+      "actual": 32,
+      "expected_present": true,
+      "actual_present": true
     }
-  ]
+  ],
+  "differences_truncated": false
 }
 ```
 
