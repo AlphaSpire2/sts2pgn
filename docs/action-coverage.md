@@ -34,7 +34,7 @@ Legend:
 | `combat.play_card` | `NetPlayCardAction` / `PlayCardAction` | Player slot, combat-card ID, card model/mutations, and target combat ID plus target model fingerprint. | Event |
 | `combat.use_potion` | `NetUsePotionAction` / `UsePotionAction` | Player slot, potion slot/model, combat flag, and creature target ID/model or player target slot. | Event |
 | `combat.discard_potion` | `NetDiscardPotionGameAction` | Player slot, potion slot/model, combat flag. | Event |
-| `combat.end_turn` | `NetEndPlayerTurnAction` | Player slot and turn number. | Event |
+| `combat.end_turn` | `NetEndPlayerTurnAction`; accepted direct `PlayerCmd.EndTurn` fallback | Player slot and turn number. The fallback covers non-gameplay control mods such as STS2 MCP single-player without duplicating the normal queued action. | Event/Direct |
 | `combat.undo_end_turn` | `NetUndoEndPlayerTurnAction` | Player slot and turn number. | Event |
 | internal enemy-turn readiness | `NetReadyToBeginEnemyTurnAction` | Deterministic automatic synchronization, not a player decision. | Excluded |
 | action resume | `ActionQueueSet.ActionResumed` | Paused action ID. Internal replay primitive, not normally semantic movetext. | Event |

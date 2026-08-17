@@ -5,7 +5,7 @@ STS2PGN records Slay the Spire 2 runs as deterministic, human-readable traces in
 The long-term purpose is simulator conformance testing: record a run in the real game, feed the resulting `.sts2pgn` file to an external simulator, replay the same decisions, and identify the first state difference between the simulator and STS2.
 
 > [!IMPORTANT]
-> Phase 3 is trace-validated. Phase 4 is underway: recorder 0.5.0 adds the first canonical portable state and authoritative digest at run start. Phase 5 now includes a portable simulator replay engine; the in-game validation replayer and later state scopes remain pending. The game-coupled assembly still needs to be built and smoke-tested with matching STS2 assemblies.
+> Phase 3 is trace-validated. Recorder 0.5.1 also captures accepted direct end-turn calls used by STS2 MCP single-player. Phase 4 currently has only the run-start observation and must add generated map, room, choice, combat, settled-action, boundary, and terminal scopes before in-game Phase 5 playback can be meaningful. The game-coupled assembly still needs to be built and smoke-tested with matching STS2 assemblies.
 
 ## Architecture
 

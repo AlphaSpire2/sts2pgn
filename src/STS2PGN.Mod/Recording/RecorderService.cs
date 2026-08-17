@@ -91,6 +91,10 @@ internal static class RecorderService
     public static void RecordCrystalSphereProceed() =>
         TryRecord("event.crystal_sphere.proceed", new { }, LocalPlayerId());
 
+    public static void RecordDirectEndTurn(ulong playerId, int turn) =>
+        ExecuteSafely("capturing direct end turn", () =>
+            TryRecord("combat.end_turn", new { turn }, playerId));
+
     public static void RecordRoomProceed()
     {
         ExecuteSafely("capturing room proceed", () =>

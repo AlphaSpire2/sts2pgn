@@ -1,5 +1,6 @@
 using System.Reflection;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Merchant;
@@ -14,6 +15,41 @@ using MegaCrit.Sts2.Core.Runs;
 using STS2PGN.Mod.Recording;
 
 namespace STS2PGN.Mod.Integration;
+
+[HarmonyPatch(typeof(PlayerCmd), nameof(PlayerCmd.EndTurn))]
+internal static class DirectEndTurnPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(Player player, out DirectEndTurnSnapshot? __state)
+    {
+        __state = null;
+        if (CombatManager.Instance.IsPlayerReadyToEndTurn(player))
+        {
+            return;
+        }
+
+        // Normal UI input is already represented by EndPlayerTurnAction. This patch covers
+        // accepted callers which invoke PlayerCmd directly, such as STS2 MCP single-player.
+        if (RunManager.Instance.IsInProgress
+            && RunManager.Instance.ActionExecutor.CurrentlyRunningAction is null)
+        {
+            __state = new DirectEndTurnSnapshot(
+                player.NetId,
+                player.PlayerCombatState?.TurnNumber ?? 0);
+        }
+    }
+
+    [HarmonyPostfix]
+    private static void Postfix(Player player, DirectEndTurnSnapshot? __state)
+    {
+        if (__state is not null && CombatManager.Instance.IsPlayerReadyToEndTurn(player))
+        {
+            RecorderService.RecordDirectEndTurn(__state.PlayerId, __state.Turn);
+        }
+    }
+
+    private sealed record DirectEndTurnSnapshot(ulong PlayerId, int Turn);
+}
 
 [HarmonyPatch(typeof(RunManager), nameof(RunManager.OnEnded))]
 internal static class RunEndedPatch

@@ -5,8 +5,8 @@
 - Phase 1 completed: repository scaffold, mod build contract, format proposal, replay contract, and action-coverage ledger.
 - Phase 2 completed: portable trace model, append-oriented builder, streaming parser, deterministic writer, validation, canonical JSON/SHA-256 hashing, forward-compatible unknown records, crash-prefix recovery, and automated tests.
 - Phase 3 completed and trace-validated with recorder 0.4.2: the recorder captures the supported single-player decision surface, writes portable fingerprints and correctly ordered nested operations, handles Crystal Sphere explicitly, durably flushes each record, and finalizes results atomically.
-- Phase 4 underway: recorder 0.5.0 implements the canonical `run_start.core` projection, embeds it in `run.start`, and emits its first authoritative `state.observe` digest. Later room, reward, turn, and settled-action scopes remain pending.
-- Phase 5 underway: the portable Core now provides an ordered replay timeline, simulator-adapter contract, canonical state comparison, and first-divergence/result reporting. The STS2-coupled validation replayer remains pending on the later Phase 4 scopes and matching game assemblies.
+- Phase 4 is the active implementation gate: recorder 0.5.1 implements `run_start.core` and its initial `state.observe`, but still needs generated acts/maps, current room and offered choices, combat state, and observations after settled actions, turns, room/reward/act boundaries, and run end.
+- Phase 5 portable foundation completed: the Core provides an ordered replay timeline, simulator-adapter contract, canonical state comparison, and first-divergence/result reporting. Further STS2-coupled playback is paused until the Phase 4 observation contract above is implemented and trace-validated.
 
 ## Goal
 
@@ -254,6 +254,15 @@ Deliverable: a game-independent library that can create, parse, validate, and ro
 Deliverable: complete `.sts2pgn` recording for supported single-player runs.
 
 ### Phase 4: Authoritative observations and determinism validation
+
+Implementation order for the current Phase 4 gate:
+
+1. Add portable generated-act and generated-map topology, including stable coordinates, room types, connections, boss/start nodes, and current act identity.
+2. Add current room/room stack and currently offered event, rest, reward, treasure, shop, and synchronized player choices.
+3. Add live combat projection: phase/round/turn, player piles and energy, stable combat-card IDs, creatures, HP/block/powers/orbs/intents, and relevant queue/choice state.
+4. Emit full observations after map generation, room entry/exit, rewards, act transitions, combat turn boundaries, and run end.
+5. Emit action-correlated observations only after the action executor and any nested player choice have reached a settled boundary.
+6. Validate a new full run for contiguous `combat.end_turn` decisions and observation coverage before resuming the in-game Phase 5 replayer.
 
 1. Define a canonical state projection that excludes timestamps, animation state, localized text, and other cosmetic values.
 2. Include gameplay state such as player resources, deck and card mutations, relics, potions, RNG counters, map history, room identity, available choices, combat piles, creatures, powers, orbs, intents, action queues, and turn phase as appropriate.
