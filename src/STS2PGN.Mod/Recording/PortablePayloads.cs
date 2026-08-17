@@ -71,9 +71,9 @@ internal static class PortablePayloads
         {
             model_id = ModelId(card.Enchantment.Id),
             amount = card.Enchantment.Amount,
-            properties = SavedProperties(card.Enchantment.Props),
+            properties = SavedPropertiesFingerprint(card.Enchantment.Props),
         },
-        properties = SavedProperties(card.Props),
+        properties = SavedPropertiesFingerprint(card.Props),
         floor_added_to_deck = card.FloorAddedToDeck,
     };
 
@@ -143,7 +143,7 @@ internal static class PortablePayloads
         return result.ToString();
     }
 
-    private static object? SavedProperties(SavedProperties? properties)
+    public static object? SavedPropertiesFingerprint(SavedProperties? properties)
     {
         if (properties is null)
         {

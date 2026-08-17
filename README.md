@@ -5,7 +5,7 @@ STS2PGN records Slay the Spire 2 runs as deterministic, human-readable traces in
 The long-term purpose is simulator conformance testing: record a run in the real game, feed the resulting `.sts2pgn` file to an external simulator, replay the same decisions, and identify the first state difference between the simulator and STS2.
 
 > [!IMPORTANT]
-> Phase 3 recorder implementation is complete against the current decompile. The portable core and durable append/finalization path are tested. The 0.4.2 game-coupled assembly and its card-removal path still need a fresh in-game smoke trace built with matching STS2 assemblies.
+> Phase 3 is trace-validated. Phase 4 is underway: recorder 0.5.0 adds the first canonical portable state and authoritative digest at run start. The game-coupled assembly still needs to be built and smoke-tested with matching STS2 assemblies.
 
 ## Architecture
 
@@ -25,7 +25,7 @@ The trace contains initial state, ordered semantic actions, compatibility metada
 src/STS2PGN.Core/          Portable trace model and codec
 src/STS2PGN.Mod/           STS2 recorder and replay-validation mod
 tests/STS2PGN.Core.Tests/  Game-independent tests
-docs/format.md             Version-one file format proposal
+docs/format.md             Version-one format and projection specification
 docs/replay-contract.md    Recorder/simulator comparison contract
 docs/action-coverage.md    Game integration audit ledger
 examples/                  Example traces
@@ -154,7 +154,7 @@ string text = Sts2PgnWriter.Write(record);
 
 ## Format status
 
-The version-one text grammar and core codec are implemented. The portable state projection remains a proposal until the observation work in Phase 4 is complete, so examples and state schemas may still change without migration support. Once version 1 is declared stable, incompatible grammar changes require a new `FormatVersion`, while comparison-schema changes require a new `projection_version`.
+The version-one text grammar and core codec are implemented. Projection version 1 is under active development: `run_start.core` is implemented, while later initialization, room, reward, turn, and combat scopes remain pending. State schemas may still change without migration support until Phase 4 declares version 1 stable. After that, incompatible grammar changes require a new `FormatVersion`, while comparison-schema changes require a new `projection_version`.
 
 The authoritative design documents are:
 

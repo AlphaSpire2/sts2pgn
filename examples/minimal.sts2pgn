@@ -12,6 +12,6 @@
 [StartedAt "2026-01-01T00:00:00Z"]
 [Result "*"]
 
-1 run.start {"actor":null,"location":{"act":0,"floor":0},"data":{"source_snapshot":{"schema_version":0,"encoding":"json","data":{}},"state":{"players":{"p0":{"character":"IRONCLAD"}},"seed":"EXAMPLESEED"}},"extensions":{}}
-2 state.observe {"after":1,"context":"run.start","digest":"sha256:1b9db082760202feefaf7e86f6fe7c681b7940b9f7b26aff645a754291f42c7a","projection_version":1,"state":{"players":{"p0":{"character":"IRONCLAD"}},"seed":"EXAMPLESEED"}}
+1 run.start {"actor":null,"location":{"act":0,"floor":0},"data":{"source_snapshot":{"schema_version":0,"encoding":"sts2-save-json","data":{}},"state":{"scope":"run_start.core","run":{"seed":"EXAMPLESEED","mode":"standard","ascension":0,"act":0,"floor":0},"players":[{"slot":"p0","character_model":"CHARACTER.IRONCLAD"}],"combat":null}},"extensions":{}}
+2 state.observe {"after":1,"context":"run.start","digest":"sha256:b9b1e671af34c4f8d060373202a8c33acaa888690093b1cd594193b745280d89","projection_version":1,"state":{"scope":"run_start.core","run":{"seed":"EXAMPLESEED","mode":"standard","ascension":0,"act":0,"floor":0},"players":[{"slot":"p0","character_model":"CHARACTER.IRONCLAD"}],"combat":null}}
 *

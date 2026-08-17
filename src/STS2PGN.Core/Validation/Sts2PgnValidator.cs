@@ -251,7 +251,6 @@ public static class Sts2PgnValidator
             AddError(issues, "run_start_count", $"Expected exactly one run.start record, found {runStartCount}.", "records");
         }
 
-        HashSet<long> sequences = record.Entries.Select(entry => entry.Sequence).ToHashSet();
         Dictionary<long, RunRecordEntry> entriesBySequence = record.Entries
             .GroupBy(entry => entry.Sequence)
             .ToDictionary(group => group.Key, group => group.First());
@@ -278,7 +277,7 @@ public static class Sts2PgnValidator
 
             if (entry.Kind == "state.observe")
             {
-                ValidateObservation(entry, sequences, issues);
+                ValidateObservation(entry, entriesBySequence, issues);
             }
 
             if (ResolveKinds.TryGetValue(entry.Kind, out string? expectedActionKind))
@@ -495,6 +494,11 @@ public static class Sts2PgnValidator
         && value.TryGetInt32(out int number)
         && number >= 0;
 
+    private static bool HasInteger(JsonElement parent, string propertyName) =>
+        parent.TryGetProperty(propertyName, out JsonElement value)
+        && value.ValueKind == JsonValueKind.Number
+        && value.TryGetInt64(out _);
+
     private static bool HasNonEmptyString(JsonElement parent, string propertyName) =>
         parent.ValueKind == JsonValueKind.Object
         && parent.TryGetProperty(propertyName, out JsonElement value)
@@ -561,31 +565,51 @@ public static class Sts2PgnValidator
 
     private static void ValidateObservation(
         RunRecordEntry entry,
-        IReadOnlySet<long> sequences,
+        IReadOnlyDictionary<long, RunRecordEntry> entriesBySequence,
         List<ValidationIssue> issues)
     {
         string location = $"sequence:{entry.Sequence}";
+        long? afterSequence = null;
         if (!entry.Payload.TryGetProperty("after", out JsonElement afterElement)
+            || afterElement.ValueKind != JsonValueKind.Number
             || !afterElement.TryGetInt64(out long after)
             || after <= 0
             || after >= entry.Sequence
-            || !sequences.Contains(after))
+            || !entriesBySequence.ContainsKey(after))
         {
             AddError(issues, "invalid_observation_after", "state.observe must reference an earlier sequence in 'after'.", location);
         }
+        else
+        {
+            afterSequence = after;
+        }
 
+        string? observationContext = null;
         if (!entry.Payload.TryGetProperty("context", out JsonElement context)
             || context.ValueKind != JsonValueKind.String
             || string.IsNullOrWhiteSpace(context.GetString()))
         {
             AddError(issues, "invalid_observation_context", "state.observe requires a non-empty string context.", location);
         }
+        else
+        {
+            observationContext = context.GetString();
+        }
 
         if (!entry.Payload.TryGetProperty("projection_version", out JsonElement projectionVersion)
+            || projectionVersion.ValueKind != JsonValueKind.Number
             || !projectionVersion.TryGetInt32(out int version)
             || version <= 0)
         {
             AddError(issues, "invalid_projection_version", "state.observe requires a positive projection_version.", location);
+        }
+        else if (version != FormatConstants.CurrentStateProjectionVersion)
+        {
+            AddError(
+                issues,
+                "unsupported_projection_version",
+                $"State projection version {version} is not supported; expected {FormatConstants.CurrentStateProjectionVersion}.",
+                location);
         }
 
         string? recordedDigest = null;
@@ -623,6 +647,118 @@ public static class Sts2PgnValidator
                 AddError(issues, "uncanonicalizable_state", exception.Message, location);
             }
         }
+
+        if (observationContext == "run.start" && afterSequence.HasValue && hasValidState)
+        {
+            ValidateRunStartProjection(
+                entry,
+                entriesBySequence[afterSequence.Value],
+                state,
+                issues);
+        }
+    }
+
+    private static void ValidateRunStartProjection(
+        RunRecordEntry observation,
+        RunRecordEntry observedEntry,
+        JsonElement state,
+        List<ValidationIssue> issues)
+    {
+        string location = $"sequence:{observation.Sequence}";
+        if (observedEntry.Kind != "run.start")
+        {
+            AddError(
+                issues,
+                "invalid_run_start_observation",
+                "A run.start observation must reference the run.start record.",
+                location);
+            return;
+        }
+
+        if (observation.Sequence != observedEntry.Sequence + 1)
+        {
+            AddError(
+                issues,
+                "invalid_run_start_observation",
+                "The run.start observation must immediately follow run.start.",
+                location);
+        }
+
+        if (!TryGetData(observedEntry, out JsonElement runStartData)
+            || !runStartData.TryGetProperty("state", out JsonElement embeddedState)
+            || embeddedState.ValueKind != JsonValueKind.Object)
+        {
+            AddError(
+                issues,
+                "missing_run_start_projection",
+                "run.start requires data.state when followed by a run.start observation.",
+                $"sequence:{observedEntry.Sequence}");
+        }
+        else
+        {
+            try
+            {
+                if (!string.Equals(
+                    CanonicalJson.Serialize(embeddedState),
+                    CanonicalJson.Serialize(state),
+                    StringComparison.Ordinal))
+                {
+                    AddError(
+                        issues,
+                        "run_start_projection_mismatch",
+                        "The run.start embedded state and its authoritative observation differ.",
+                        location);
+                }
+            }
+            catch (ArgumentException exception)
+            {
+                AddError(issues, "uncanonicalizable_run_start", exception.Message, location);
+            }
+        }
+
+        if (!HasNonEmptyString(state, "scope")
+            || state.GetProperty("scope").GetString() != "run_start.core"
+            || !state.TryGetProperty("run", out JsonElement run)
+            || run.ValueKind != JsonValueKind.Object
+            || !HasNonEmptyString(run, "seed")
+            || !HasNonEmptyString(run, "mode")
+            || !HasInteger(run, "ascension")
+            || !HasInteger(run, "act")
+            || !HasInteger(run, "floor")
+            || !state.TryGetProperty("players", out JsonElement players)
+            || players.ValueKind != JsonValueKind.Array
+            || !HasValidRunStartPlayers(players)
+            || !state.TryGetProperty("combat", out JsonElement combat)
+            || combat.ValueKind != JsonValueKind.Null)
+        {
+            AddError(
+                issues,
+                "invalid_run_start_projection",
+                "run.start state does not match projection version 1 scope run_start.core.",
+                location);
+        }
+    }
+
+    private static bool HasValidRunStartPlayers(JsonElement players)
+    {
+        HashSet<string> slots = new(StringComparer.Ordinal);
+        foreach (JsonElement player in players.EnumerateArray())
+        {
+            if (player.ValueKind != JsonValueKind.Object
+                || !HasNonEmptyString(player, "slot")
+                || !HasNonEmptyString(player, "character_model"))
+            {
+                return false;
+            }
+
+            string slot = player.GetProperty("slot").GetString()!;
+            if (!IsPlayerSlot(slot) || !slots.Add(slot))
+            {
+                return false;
+            }
+        }
+
+        return slots.Count > 0;
     }
 
     private static bool IsSha256Digest(string value) =>

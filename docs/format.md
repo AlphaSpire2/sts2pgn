@@ -1,6 +1,6 @@
 # STS2PGN Format Version 1
 
-Status: **text grammar implemented in Phase 2; portable state projection not yet stable**.
+Status: **text grammar implemented; Phase 4 state projection version 1 is under active development**.
 
 ## Purpose
 
@@ -25,7 +25,7 @@ The format borrows PGN's tag-pair header and ordered movetext structure. JSON pa
 [AnotherTag "value"]
 
 1 action.kind {"actor":"p0","data":{}}
-2 state.observe {"after":1,"context":"action.settled","digest":"sha256:...","state":{}}
+2 state.observe {"after":1,"context":"action.settled","digest":"sha256:...","projection_version":1,"state":{}}
 *
 ```
 
@@ -138,12 +138,12 @@ Localized names are descriptive only and cannot identify gameplay objects.
 
 ## Initial state
 
-The first record must be `run.start`. It contains both:
+The first record must be `run.start`. Its `data` contains both:
 
 - `source_snapshot`: the exact STS2 `SerializableRun` JSON and schema information, used by compatible in-game replay; and
 - `state`: the portable normalized state projection, used by simulators.
 
-The portable projection is authoritative for cross-implementation comparison. A simulator must not need to understand private STS2 serialization details to initialize a supported run.
+The portable projection is authoritative for cross-implementation comparison. A simulator must not need to understand private STS2 serialization details to initialize a supported run. Phase 4 currently defines the `run_start.core` scope below; the source snapshot remains necessary until the remaining initialization scopes are normalized.
 
 Secrets, platform account identifiers, and unnecessary profile history must not be included. Player identifiers are anonymized to run slots.
 
@@ -206,7 +206,65 @@ A `state.observe` record describes authoritative state after the real game has s
 
 Writers generate lightweight observations after settled actions and full observations at run start, room boundaries, combat turn boundaries, reward boundaries, and run end. The exact version-one projection is finalized during Phase 4.
 
-The Phase 2 core library validates the observation envelope (`after`, `context`, `digest`, `projection_version`, and object-valued `state`) and verifies that the digest matches the canonical state. It deliberately does not validate game-specific fields inside `state` until that projection is finalized.
+The core library validates the observation envelope (`after`, `context`, `digest`, `projection_version`, and object-valued `state`) and verifies that the digest matches the canonical state. For `context = run.start`, it also requires the observation to reference `run.start`, match `run.start.data.state`, and conform to the `run_start.core` schema.
+
+### Projection version 1: `run_start.core`
+
+Recorder version 0.5.0 adds an unambiguous initial settled-state checkpoint. `run.start`
+embeds the portable state in `data.state`; the immediately following `state.observe`
+duplicates that state, references sequence 1, and supplies its canonical digest.
+
+```json
+{
+  "scope": "run_start.core",
+  "run": {
+    "seed": "ABC123",
+    "mode": "standard",
+    "ascension": 0,
+    "act": 0,
+    "floor": 0,
+    "reloads": 0,
+    "visited_map": [],
+    "modifiers": [],
+    "rng": { "seed": "ABC123", "counters": {} },
+    "odds": {},
+    "shared_relic_grab_bag": {},
+    "extra": {}
+  },
+  "players": [
+    {
+      "slot": "p0",
+      "character_model": "CHARACTER.IRONCLAD",
+      "current_hp": 80,
+      "max_hp": 80,
+      "max_energy": 3,
+      "gold": 99,
+      "base_orb_slots": 0,
+      "max_potion_slots": 3,
+      "deck": [],
+      "relics": [],
+      "potion_slots": [],
+      "rng": { "seed": 0, "counters": {} },
+      "odds": {},
+      "relic_grab_bag": {},
+      "unlocks": {},
+      "extra": {}
+    }
+  ],
+  "combat": null
+}
+```
+
+Comparison rules for this scope are:
+
+- `players` is keyed by `slot`, although its wire representation preserves run order.
+- Decks, relics, potion slots, visited map coordinates, modifiers, and each relic grab-bag list are ordered.
+- RNG counter objects are keyed by their symbolic counter name and compared exactly.
+- Unlock epochs and seen encounters are serialized in ordinally sorted order because they are sets.
+- Card, relic, enchantment, and modifier saved properties are name-sorted portable objects.
+- Odds are exact STS2 single-precision values encoded as canonical JSON numbers.
+- `combat` is `null` at this boundary. Combat projection is a later Phase 4 scope.
+- Wall-clock values, platform identity, discovery/UI history, localization, and presentation state are excluded.
 
 ## Canonical JSON and hashing
 

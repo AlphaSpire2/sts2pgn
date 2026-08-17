@@ -130,7 +130,8 @@ internal sealed class RecordingSession : IDisposable
         SerializableRun save = RunManager.Instance.ToSave(null);
         string sourceJson = JsonSerializationUtility.ToJson(save);
         JsonNode? sourceData = JsonNode.Parse(sourceJson);
-        Record("run.start", new
+        JsonElement portableState = InitialStateProjector.Capture(save, _playerSlots);
+        long? runStartSequence = Record("run.start", new
         {
             source_snapshot = new
             {
@@ -138,7 +139,24 @@ internal sealed class RecordingSession : IDisposable
                 encoding = "sts2-save-json",
                 data = sourceData,
             },
+            state = portableState,
         });
+
+        if (runStartSequence.HasValue)
+        {
+            StateObservationPayload observation = StateObservationFactory.Create(
+                runStartSequence.Value,
+                "run.start",
+                portableState);
+            JsonElement payload = JsonSerializer.SerializeToElement(observation);
+            lock (_gate)
+            {
+                if (!_disposed && !_writer.IsCompleted)
+                {
+                    _writer.Append("state.observe", payload);
+                }
+            }
+        }
     }
 
     private object BuildLocation()

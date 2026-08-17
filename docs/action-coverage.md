@@ -40,7 +40,7 @@ Legend:
 | action resume | `ActionQueueSet.ActionResumed` | Paused action ID. Internal replay primitive, not normally semantic movetext. | Event |
 | deterministic hook action | `GenericHookGameAction` | Hook ID, owner, action type. Internal replay primitive; simulator normally models its effects. | Event |
 
-Settled-state observation will be based on `ActionExecutor` completion plus player-choice/queue quiescence. That projection and quiescence implementation belongs to Phase 4; Phase 3 records the accepted inputs in execution order.
+The Phase 4 run-start checkpoint is implemented because that boundary is synchronously settled. Later settled-state observations will be based on `ActionExecutor` completion plus player-choice/queue quiescence; Phase 3 records remain the accepted inputs in execution order.
 
 ## Player choices
 
@@ -131,7 +131,7 @@ The recorder must project enough authoritative state to validate effects that ar
 Phase 3 implementation exit criteria:
 
 1. Every decision exposed by the reference MCP during an active run is mapped or explicitly excluded.
-2. Every mapped input has an accepted-action hook; settled state projection is explicitly Phase 4.
+2. Every mapped input has an accepted-action hook; the Phase 4 `run_start.core` observation is implemented and later settled-action scopes remain pending.
 3. Duplicate signals from UI, synchronizers, action queues, and reward outcomes are deduplicated.
 4. A seeded smoke run exercises every supported action family once matching STS2 assemblies are available.
 5. Remaining research is limited to Phase 4 observation boundaries.

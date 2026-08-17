@@ -4,8 +4,8 @@
 
 - Phase 1 completed: repository scaffold, mod build contract, format proposal, replay contract, and action-coverage ledger.
 - Phase 2 completed: portable trace model, append-oriented builder, streaming parser, deterministic writer, validation, canonical JSON/SHA-256 hashing, forward-compatible unknown records, crash-prefix recovery, and automated tests.
-- Phase 3 implementation completed: the recorder captures the supported single-player decision surface, writes portable fingerprints and correctly ordered nested operations, handles Crystal Sphere explicitly, durably flushes each record, and finalizes results atomically. The 0.4.2 card-removal-path fix is core-tested; a fresh in-game trace built against matching STS2 assemblies remains the final smoke check before Phase 4.
-- Phase 4 is next: authoritative portable observations and simulator divergence checkpoints.
+- Phase 3 completed and trace-validated with recorder 0.4.2: the recorder captures the supported single-player decision surface, writes portable fingerprints and correctly ordered nested operations, handles Crystal Sphere explicitly, durably flushes each record, and finalizes results atomically.
+- Phase 4 underway: recorder 0.5.0 implements the canonical `run_start.core` projection, embeds it in `run.start`, and emits its first authoritative `state.observe` digest. Later room, reward, turn, and settled-action scopes remain pending.
 
 ## Goal
 

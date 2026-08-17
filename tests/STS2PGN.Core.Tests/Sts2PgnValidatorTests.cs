@@ -84,7 +84,7 @@ public sealed class Sts2PgnValidatorTests
             .AppendJson("run.start", "{}")
             .AppendJson(
                 "state.observe",
-                $"{{\"after\":1,\"context\":\"run.start\",\"digest\":\"{digest}\",\"projection_version\":1,\"state\":{{\"hp\":80}}}}")
+                $"{{\"after\":1,\"context\":\"test\",\"digest\":\"{digest}\",\"projection_version\":1,\"state\":{{\"hp\":80}}}}")
             .Build();
 
         Assert.True(Sts2PgnValidator.Validate(record).IsValid);
@@ -97,12 +97,59 @@ public sealed class Sts2PgnValidatorTests
             .AppendJson("run.start", "{}")
             .AppendJson(
                 "state.observe",
-                "{\"after\":1,\"context\":\"run.start\",\"digest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"projection_version\":1,\"state\":{\"hp\":80}}")
+                "{\"after\":1,\"context\":\"test\",\"digest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"projection_version\":1,\"state\":{\"hp\":80}}")
             .Build();
 
         Sts2PgnValidationResult validation = Sts2PgnValidator.Validate(record);
 
         Assert.Contains(validation.Errors, issue => issue.Code == "digest_mismatch");
+    }
+
+    [Fact]
+    public void ValidatorAcceptsMatchingRunStartProjection()
+    {
+        const string stateJson = "{\"scope\":\"run_start.core\",\"run\":{\"seed\":\"TEST\",\"mode\":\"standard\",\"ascension\":0,\"act\":0,\"floor\":0},\"players\":[{\"slot\":\"p0\",\"character_model\":\"CHARACTER.IRONCLAD\"}],\"combat\":null}";
+        using System.Text.Json.JsonDocument state = System.Text.Json.JsonDocument.Parse(stateJson);
+        StateObservationPayload observation = StateObservationFactory.Create(1, "run.start", state.RootElement);
+        RunRecord record = TestRecordFactory.CreateBuilder()
+            .AppendJson("run.start", $"{{\"data\":{{\"state\":{stateJson}}}}}")
+            .Append("state.observe", System.Text.Json.JsonSerializer.SerializeToElement(observation))
+            .Build();
+
+        Assert.True(Sts2PgnValidator.Validate(record).IsValid);
+    }
+
+    [Fact]
+    public void ValidatorRejectsMismatchedRunStartProjection()
+    {
+        const string observedState = "{\"scope\":\"run_start.core\",\"run\":{\"seed\":\"TEST\",\"mode\":\"standard\",\"ascension\":0,\"act\":0,\"floor\":0},\"players\":[{\"slot\":\"p0\",\"character_model\":\"CHARACTER.IRONCLAD\"}],\"combat\":null}";
+        using System.Text.Json.JsonDocument state = System.Text.Json.JsonDocument.Parse(observedState);
+        StateObservationPayload observation = StateObservationFactory.Create(1, "run.start", state.RootElement);
+        RunRecord record = TestRecordFactory.CreateBuilder()
+            .AppendJson("run.start", "{\"data\":{\"state\":{\"scope\":\"different\"}}}")
+            .Append("state.observe", System.Text.Json.JsonSerializer.SerializeToElement(observation))
+            .Build();
+
+        Assert.Contains(
+            Sts2PgnValidator.Validate(record).Errors,
+            issue => issue.Code == "run_start_projection_mismatch");
+    }
+
+    [Fact]
+    public void ValidatorRejectsUnsupportedProjectionVersion()
+    {
+        using System.Text.Json.JsonDocument state = System.Text.Json.JsonDocument.Parse("{}");
+        string digest = CanonicalJson.ComputeSha256(state.RootElement);
+        RunRecord record = TestRecordFactory.CreateBuilder()
+            .AppendJson("run.start", "{}")
+            .AppendJson(
+                "state.observe",
+                $"{{\"after\":1,\"context\":\"test\",\"digest\":\"{digest}\",\"projection_version\":2,\"state\":{{}}}}")
+            .Build();
+
+        Assert.Contains(
+            Sts2PgnValidator.Validate(record).Errors,
+            issue => issue.Code == "unsupported_projection_version");
     }
 
     [Fact]
