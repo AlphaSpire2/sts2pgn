@@ -31,24 +31,10 @@ public static class Sts2PgnWriter
             }
         }
 
-        foreach (TagPair tag in record.Metadata.Tags)
-        {
-            writer.Write('[');
-            writer.Write(tag.Name);
-            writer.Write(" \"");
-            WriteEscapedTagValue(writer, tag.Value);
-            writer.Write("\"]\n");
-        }
-
-        writer.Write('\n');
+        WriteMetadata(writer, record.Metadata);
         foreach (RunRecordEntry entry in record.Entries)
         {
-            writer.Write(entry.Sequence);
-            writer.Write(' ');
-            writer.Write(entry.Kind);
-            writer.Write(' ');
-            writer.Write(CanonicalJson.Serialize(entry.Payload));
-            writer.Write('\n');
+            WriteEntry(writer, entry);
         }
 
         if (options.IncludeTerminalResult)
@@ -58,7 +44,31 @@ public static class Sts2PgnWriter
         }
     }
 
-    private static void WriteEscapedTagValue(TextWriter writer, string value)
+    internal static void WriteMetadata(TextWriter writer, RunMetadata metadata)
+    {
+        foreach (TagPair tag in metadata.Tags)
+        {
+            writer.Write('[');
+            writer.Write(tag.Name);
+            writer.Write(" \"");
+            WriteEscapedTagValue(writer, tag.Value);
+            writer.Write("\"]\n");
+        }
+
+        writer.Write('\n');
+    }
+
+    internal static void WriteEntry(TextWriter writer, RunRecordEntry entry)
+    {
+        writer.Write(entry.Sequence);
+        writer.Write(' ');
+        writer.Write(entry.Kind);
+        writer.Write(' ');
+        writer.Write(CanonicalJson.Serialize(entry.Payload));
+        writer.Write('\n');
+    }
+
+    internal static void WriteEscapedTagValue(TextWriter writer, string value)
     {
         foreach (char character in value)
         {
