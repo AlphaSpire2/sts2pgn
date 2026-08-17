@@ -1,6 +1,3 @@
-# Alternate repository metadata used in the managed workspace, where .git is read-only.
-.git-data/
-
 # Build output
 bin/
 obj/

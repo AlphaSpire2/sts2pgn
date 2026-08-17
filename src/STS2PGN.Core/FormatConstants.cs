@@ -7,5 +7,6 @@ public static class FormatConstants
 {
     public const string Name = "STS2PGN";
     public const int CurrentVersion = 1;
+    public const int CurrentStateProjectionVersion = 1;
     public const string FileExtension = ".sts2pgn";
 }

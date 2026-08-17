@@ -7,6 +7,7 @@ public sealed class FormatConstantsTests
     {
         Assert.Equal("STS2PGN", FormatConstants.Name);
         Assert.Equal(1, FormatConstants.CurrentVersion);
+        Assert.Equal(1, FormatConstants.CurrentStateProjectionVersion);
         Assert.Equal(".sts2pgn", FormatConstants.FileExtension);
     }
 }
