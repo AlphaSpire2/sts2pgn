@@ -83,10 +83,11 @@ After building, copy these files to the game's `mods/` directory:
 
 ```text
 STS2_PGN.dll
-STS2PGN.Core.dll
 STS2_PGN.json
 config.json
 ```
+
+`STS2_PGN.dll` includes the portable Core implementation because STS2 does not resolve arbitrary sibling DLL dependencies. The separately built `STS2PGN.Core.dll` is for simulator integrations, command-line tools, and tests; do not install it with the mod.
 
 The game requires the manifest filename to match the mod ID. The source manifest is named `mod_manifest.json`, but the build output renames it to `STS2_PGN.json`.
 

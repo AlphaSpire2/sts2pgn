@@ -11,7 +11,17 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../STS2PGN.Core/STS2PGN.Core.csproj" />
+    <!--
+      STS2 loads only the assembly named by the mod manifest and does not probe sibling
+      managed dependencies. Link the portable Core sources into the mod assembly so
+      STS2_PGN.dll is self-contained. STS2PGN.Core remains a separate project for
+      simulators, tools, and tests.
+    -->
+    <Compile Include="../STS2PGN.Core/FormatConstants.cs" Link="Core/FormatConstants.cs" />
+    <Compile Include="../STS2PGN.Core/Model/**/*.cs" Link="Core/Model/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../STS2PGN.Core/Parsing/**/*.cs" Link="Core/Parsing/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../STS2PGN.Core/Serialization/**/*.cs" Link="Core/Serialization/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../STS2PGN.Core/Validation/**/*.cs" Link="Core/Validation/%(RecursiveDir)%(Filename)%(Extension)" />
     <Reference Include="sts2">
       <HintPath>$(STS2GameDataDir)/sts2.dll</HintPath>
       <Private>false</Private>

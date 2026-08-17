@@ -67,4 +67,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Built STS2PGN in '$output'." -ForegroundColor Green
-Write-Host "Copy STS2_PGN.dll, STS2PGN.Core.dll, STS2_PGN.json, and config.json to the game's mods directory."
+Write-Host "Copy STS2_PGN.dll, STS2_PGN.json, and config.json to the game's mods directory."
