@@ -167,10 +167,11 @@ if (!replay.Succeeded)
 ```
 
 `ReplayEngine` validates compatibility and ordering, initializes the adapter from
-`run.start`, forwards every later non-observation record, requests normalized simulator
-state at each `state.observe`, and stops at the first illegal action, state mismatch, or
-terminal-result mismatch. `ReplayTimeline` is available when an integration only needs
-the ordered, role-classified record stream. See the replay contract for the complete
+`run.start`, forwards later action, lifecycle, and resolution records, requests normalized
+simulator state at each `state.observe`, and stops at the first illegal action, state
+mismatch, or terminal-result mismatch. A recorded `run.finish` is expected output and is
+never fed to the adapter. `ReplayTimeline` is available when an integration only needs the
+complete ordered, role-classified record stream. See the replay contract for the complete
 adapter lifecycle and divergence format.
 
 ## Format status

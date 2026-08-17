@@ -76,7 +76,7 @@ simulator-specific behavior:
 
 1. `CheckCompatibilityAsync` declares whether the simulator supports the trace metadata.
 2. `InitializeAsync` reconstructs simulator state from the complete `run.start` record.
-3. `ConsumeAsync` applies each later non-observation record and settles its automatic effects.
+3. `ConsumeAsync` applies or verifies each later action, lifecycle, and resolution record and settles its automatic effects.
 4. `CaptureStateAsync` returns the simulator's normalized state for an observation request.
 5. `GetResultAsync` returns the simulator's terminal result.
 
@@ -84,6 +84,10 @@ Every record is preserved by `ReplayTimeline`. It assigns one processing role wi
 changing the original kind or payload: initialization, action, resolution, lifecycle,
 observation, or terminal. Unknown future kinds default to actions so adapters can either
 implement them or reject them explicitly.
+
+`run.finish` is never passed to `ConsumeAsync`. It is an expected outcome, so the engine
+asks the adapter for its independently derived result and compares the two. This keeps the
+recorded result from becoming input to the simulation under test.
 
 An observation request contains its sequence, preceding action sequence, context,
 projection version, and optional scope. It deliberately does not expose the expected

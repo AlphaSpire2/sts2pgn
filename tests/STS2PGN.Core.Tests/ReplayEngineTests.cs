@@ -127,6 +127,7 @@ public sealed class ReplayEngineTests
             .AppendJson(
                 "state.observe",
                 $"{{\"after\":2,\"context\":\"action.settled\",\"digest\":\"{digest}\",\"projection_version\":1,\"state\":{state.GetRawText()}}}")
+            .AppendJson("run.finish", "{\"data\":{\"result\":\"DEFEAT\"}}")
             .Build(RunResult.Defeat);
     }
 

@@ -357,6 +357,12 @@ Keep Harmony patches small and isolated. Document the decompiled type and method
 
 Replay mode must disable normal saving, progress updates, achievements, metrics, and leaderboard submission before executing the first action.
 
+The current STS2 `RunManager.SetUpReplay` cannot be called unguarded: it hardcodes
+`shouldSave: true` and carries the source run's `DailyTime` into the replay. The validation
+harness must activate a replay-session flag before setup and patch the shared setup inputs
+to `shouldSave: false` and `dailyTime: null`; end-of-run side-effect entry points should
+also reject validation sessions as defense in depth.
+
 ## Current Environment Constraints
 
 - The .NET 9 SDK is available for core builds and tests.

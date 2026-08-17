@@ -109,6 +109,11 @@ public sealed class ReplayEngine
                 continue;
             }
 
+            if (step.Role == ReplayRecordRole.Terminal)
+            {
+                continue;
+            }
+
             ReplayConsumeResult consumed = await simulator.ConsumeAsync(step, cancellationToken);
             if (!consumed.Accepted)
             {
