@@ -40,6 +40,8 @@ The format is therefore both a replay notation and a conformance-test fixture. I
 
 The first release will support complete single-player runs in standard, daily, and custom modes.
 
+Supported replay requires no gameplay-affecting mods. The recorder still stores the loaded mod manifest list so consumers can reject unsupported traces clearly; reproducing arbitrary mod behavior is outside the initial scope.
+
 The data model will include actor identifiers and deterministic ordering so multiplayer can be added without redesigning the format, but multiplayer replay is not part of the initial milestone.
 
 Replay means reproducing gameplay decisions and resulting game state. Cosmetic inputs such as mouse movement, hover animations, animation timing, and sound are excluded. Progression inputs such as dialogue advancement, confirmation, cancellation, and proceed actions are included when the game requires them.
@@ -233,11 +235,15 @@ Deliverable: a game-independent library that can create, parse, validate, and ro
 4. Capture `PlayerChoiceSynchronizer.PlayerChoiceReceived` for deterministic mid-action choices.
 5. Capture map, event, rest, reward, treasure, shop, and one-off synchronizer decisions.
    - Treat `CRYSTAL_SPHERE` as an explicit nondeterministic special case: record its generated board, item layout, tool changes, logical cell clicks, remaining divinations, and proceed action.
+   - For an asynchronous operation that opens a nested player choice, emit its initiating action before the nested `choice.*` records. Emit a separate outcome record after completion only when the outcome adds replay-relevant information. A simulator must be able to consume records strictly in sequence without looking ahead.
+   - Cover this ordering explicitly for card rewards, merchant card removal, rest-site upgrades, event follow-up selections, and any other action that suspends for `PlayerChoiceSynchronizer`.
 6. Generate an initial snapshot through `RunManager.ToSave()` and STS2's save serializer.
 7. Record the game version, commit, model database hash, and loaded mod manifests.
 8. Write to a profile-scoped replay directory with collision-resistant filenames.
 9. Flush after every accepted decision so a crash leaves a valid replay prefix.
-10. Finalize the result and headers when the run ends.
+   - Every flushed prefix must parse without trimming or repair. Write exactly one record-ending newline and never append a blank record line.
+10. Normalize action payloads at the mod boundary: use symbolic enum names, canonical string model IDs, stable player actors, reward-set/reward indexes, and card or offered-choice fingerprints rather than raw STS2 object serialization.
+11. Finalize the result and headers when the run ends.
 
 Deliverable: complete `.sts2pgn` recording for supported single-player runs.
 
@@ -280,11 +286,16 @@ Add automated tests for:
 - Unknown headers and action kinds.
 - Malformed and duplicate sequence numbers.
 - Truncated final-line recovery.
+- Strict parsing of live/incomplete files ending in exactly one newline, with regression coverage preventing extra trailing blank lines.
 - Required-header and result validation.
 - Stable canonical state hashing.
 - Portable state-observation serialization and field-level comparison.
 - Identification of the first divergent action from a deliberately altered simulated state.
 - Serialization of every supported action type.
+- Initiating-action → nested-choice → outcome ordering for rewards, merchant removal, rest-site choices, and event follow-up selections.
+- Explicit actor attribution for every player decision, including event and proceed actions.
+- Stable symbolic enum/model serialization with no reliance on internal numeric enum values or default object-shaped `ModelId` JSON.
+- Offered-choice and selected-card fingerprints, including deck indexes plus model and mutation data.
 - Format-version compatibility behavior.
 
 Perform seeded integration runs covering:
@@ -300,6 +311,7 @@ Perform seeded integration runs covering:
 - Treasure relic selection.
 - Save and resume.
 - Victory, defeat, and abandonment.
+- Rejection of traces containing gameplay-affecting mods.
 
 The main acceptance criterion is a record-to-replay cycle that reaches every checkpoint with the same canonical state digest. A second fixture will intentionally alter one result and must identify the correct first divergent action and state fields.
 
@@ -307,7 +319,8 @@ The main acceptance criterion is a record-to-replay cycle that reaches every che
 
 - Record authoritative accepted decisions, not raw input events.
 - Prefer stable semantic identifiers while retaining instance identifiers needed to disambiguate duplicates.
-- Store enough initial state to replay custom, unlocked, and modded runs without depending on the current profile.
+- Store enough initial state to replay custom and unlocked vanilla runs without depending on the current profile.
+- Record loaded mod compatibility metadata and reject gameplay-affecting mods unless a future simulator explicitly implements them.
 - Treat real-game observations as the authoritative oracle against which simulator behavior is measured.
 - Keep action and observation schemas portable so simulator code never needs to reference STS2 or Godot assemblies.
 - Detect incompatibility instead of silently attempting an unreliable replay.
@@ -319,7 +332,7 @@ The main acceptance criterion is a record-to-replay cycle that reaches every che
 
 ### Patch and mod compatibility
 
-Exact deterministic playback cannot be promised across gameplay-changing STS2 patches or differing gameplay mods. Record the build, commit, model hash, and mod manifests, then fail clearly or require an explicit unsafe override.
+Exact deterministic playback cannot be promised across gameplay-changing STS2 patches. Record the build, commit, model hash, and mod manifests; reject gameplay-affecting mods in the initial release and fail clearly on incompatible game builds.
 
 ### Incomplete action interception
 
@@ -339,8 +352,9 @@ Replay mode must disable normal saving, progress updates, achievements, metrics,
 
 ## Current Environment Constraints
 
-- The current environment does not have a `dotnet` executable. Project files can be created and statically reviewed, but compilation requires a .NET 9 SDK.
-- The workspace contains an empty, read-only `.git` directory. Project initialization should not attempt to replace or modify Git metadata.
+- The .NET 9 SDK is available for core builds and tests.
+- The STS2 game assemblies are not currently available in this environment. Full mod compilation requires `STS2_GAME_DIR` or `STS2GameDataDir` pointing to a matching game installation.
+- The repository has normal Git metadata and implementation work should continue to be committed in focused changes.
 - `decomp/` is a read-only link to the current game decompile and is an information source only; it must never be edited or included as project source.
 
 ## Completion Criteria
