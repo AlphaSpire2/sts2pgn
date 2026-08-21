@@ -172,7 +172,8 @@ or, from the in-game dev console, `sts2pgn drive <path>` (never quits).
 
 For every script the driver first checks the game build (`GameVersion`, `GameCommit`,
 `ModelIdHash`), the character, the ascension, and the live profile's unlock state and
-seeded acts, and refuses to start on any mismatch. It then starts the seeded custom run and
+seeded acts, and refuses to start on any mismatch that would change the generated run
+(unlock differences the game never reads during generation are only logged). It then starts the seeded custom run and
 drives one decision at a time: wait for the game to be idle and the right screen to be up,
 verify the script's fingerprints against what the game actually offers, submit through the
 same game-code path a player's input reaches, and wait for the recorder to record and

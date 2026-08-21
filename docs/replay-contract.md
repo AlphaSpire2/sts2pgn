@@ -98,8 +98,10 @@ Reports are written to the recorder's `output_directory`:
 
 Profile drift: the game adds every won encounter to the profile's encounters-seen set
 even in Custom mode, so the live unlock state changes after the first run of a batch.
-The driver stays strict and reports `unlocks_after_run` so the simulator can generate the
-next script from the state the profile is actually in (chained generation).
+The driver refuses only generation-relevant drift (epochs, first-run status, the seen-status
+of the discovery bosses; see `docs/format.md`), warns about the rest, and reports
+`unlocks_after_run` so the simulator can generate the next script from the state the
+profile is actually in (chained generation).
 
 The driver must never bypass the recorder: nested choices are answered by completing the
 game's own selection screen (which makes the game synchronize the accepted result), not

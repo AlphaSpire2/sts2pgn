@@ -23,21 +23,47 @@ public sealed record ScriptUnlocks(
     IReadOnlyList<string> EncountersSeen,
     int NumberOfRuns)
 {
+    /// <summary>
+    /// The boss encounters whose seen-status changes run generation: each act's
+    /// <c>BossDiscoveryOrder</c>, which <c>ActModel.ApplyDiscoveryOrderModifications</c> walks to
+    /// override the rolled boss with the first entry the profile has not seen. No other encounter's
+    /// seen-status is read during generation or play.
+    /// </summary>
+    public static IReadOnlyList<string> DiscoveryBosses { get; } =
+    [
+        "ENCOUNTER.VANTOM_BOSS", "ENCOUNTER.CEREMONIAL_BEAST_BOSS", "ENCOUNTER.THE_KIN_BOSS",
+        "ENCOUNTER.WATERFALL_GIANT_BOSS", "ENCOUNTER.SOUL_FYSH_BOSS", "ENCOUNTER.LAGAVULIN_MATRIARCH_BOSS",
+        "ENCOUNTER.THE_INSATIABLE_BOSS", "ENCOUNTER.KNOWLEDGE_DEMON_BOSS", "ENCOUNTER.KAISER_CRAB_BOSS",
+        "ENCOUNTER.QUEEN_BOSS", "ENCOUNTER.TEST_SUBJECT_BOSS", "ENCOUNTER.AEONGLASS_BOSS",
+    ];
+
     /// <summary>True for a profile that has never completed a run; the only distinction the game makes.</summary>
     public bool IsFirstRun => NumberOfRuns == 0;
 
     /// <summary>
-    /// Compares epochs and encounters as sets, and the run count only as "first run or not":
-    /// the game consults <c>NumberOfRuns</c> solely through <c>== 0</c> checks (first-run rewards,
-    /// treasure, act and map odds), so any positive count is gameplay-equivalent.
+    /// Generation-equivalence: true when a run generated on <paramref name="other"/> is identical to
+    /// one generated on this state. Epochs are compared exactly (they filter card/potion/relic pools
+    /// and gate alternate acts and ancients); the run count only as "first run or not" (every
+    /// generation read is an <c>== 0</c> clause); and <c>encounters_seen</c> only through the
+    /// seen-status of <see cref="DiscoveryBosses"/>. Inert differences are returned as warnings.
     /// </summary>
-    public bool Matches(ScriptUnlocks other, out string difference)
+    public bool Matches(ScriptUnlocks other, out string difference) => Matches(other, out difference, out _);
+
+    /// <inheritdoc cref="Matches(ScriptUnlocks, out string)"/>
+    public bool Matches(ScriptUnlocks other, out string difference, out IReadOnlyList<string> warnings)
     {
         ArgumentNullException.ThrowIfNull(other);
+        List<string> inert = [];
+        warnings = inert;
         if (IsFirstRun != other.IsFirstRun)
         {
             difference = $"number_of_runs: expected {(IsFirstRun ? "a first run (0)" : $"a later run ({NumberOfRuns})")}, live {other.NumberOfRuns}";
             return false;
+        }
+
+        if (NumberOfRuns != other.NumberOfRuns)
+        {
+            inert.Add($"number_of_runs: script {NumberOfRuns}, live {other.NumberOfRuns} (both past the first run; no effect on generation)");
         }
 
         if (!SetEquals(Epochs, other.Epochs, out string epochDifference))
@@ -46,17 +72,23 @@ public sealed record ScriptUnlocks(
             return false;
         }
 
-        if (!SetEquals(EncountersSeen, other.EncountersSeen, out string encounterDifference))
+        HashSet<string> bosses = new(DiscoveryBosses, StringComparer.Ordinal);
+        if (!SetEquals(EncountersSeen.Where(bosses.Contains), other.EncountersSeen.Where(bosses.Contains), out string bossDifference))
         {
-            difference = $"encounters_seen: {encounterDifference}";
+            difference = $"encounters_seen (discovery bosses): {bossDifference}";
             return false;
+        }
+
+        if (!SetEquals(EncountersSeen.Where(id => !bosses.Contains(id)), other.EncountersSeen.Where(id => !bosses.Contains(id)), out string otherDifference))
+        {
+            inert.Add($"encounters_seen: {otherDifference} (not read during generation; no effect)");
         }
 
         difference = string.Empty;
         return true;
     }
 
-    private static bool SetEquals(IReadOnlyList<string> expected, IReadOnlyList<string> live, out string difference)
+    private static bool SetEquals(IEnumerable<string> expected, IEnumerable<string> live, out string difference)
     {
         SortedSet<string> expectedSet = new(expected, StringComparer.Ordinal);
         SortedSet<string> liveSet = new(live, StringComparer.Ordinal);

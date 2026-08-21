@@ -111,6 +111,11 @@ internal static class PlaybackService
             GD.Print($"[STS2PGN] Playback: {Path.GetFileName(scriptPath)} is a recording; replaying its decisions as a script");
         }
 
+        foreach (string warning in preflight.Warnings)
+        {
+            GD.Print($"[STS2PGN] Playback: {Path.GetFileName(scriptPath)} {warning}");
+        }
+
         if (!preflight.Passed)
         {
             report.PreconditionFailures.AddRange(preflight.Failures);

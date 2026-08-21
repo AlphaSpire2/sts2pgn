@@ -24,6 +24,9 @@ internal sealed class PreflightResult
     public CharacterModel? Character { get; init; }
     public IReadOnlyList<ActModel>? Acts { get; init; }
     public List<string> Failures { get; } = [];
+
+    /// <summary>Profile differences that cannot change the run (run-count drift, inert encounters); logged, never refused.</summary>
+    public List<string> Warnings { get; } = [];
     public bool Passed => Failures.Count == 0 && Script is not null && Character is not null && Acts is not null;
 }
 
@@ -63,6 +66,7 @@ internal static class ScriptPreflight
         }
 
         List<string> failures = [];
+        List<string> warnings = [];
         ScriptIdentity identity = script.Identity;
 
         string liveVersion = ReleaseInfoManager.Instance.ReleaseInfo?.Version ?? "UNKNOWN";
@@ -92,10 +96,12 @@ internal static class ScriptPreflight
 
         UnlockState liveUnlockState = SaveManager.Instance.GenerateUnlockStateFromProgress();
         ScriptUnlocks liveUnlocks = ToScriptUnlocks(liveUnlockState);
-        if (!script.Unlocks.Matches(liveUnlocks, out string unlockDifference))
+        if (!script.Unlocks.Matches(liveUnlocks, out string unlockDifference, out IReadOnlyList<string> unlockWarnings))
         {
             failures.Add($"unlocks: {unlockDifference}");
         }
+
+        warnings.AddRange(unlockWarnings.Select(warning => $"unlocks: {warning}"));
 
         if (character is not null)
         {
@@ -110,6 +116,7 @@ internal static class ScriptPreflight
 
         PreflightResult result = new() { Script = script, Character = character, Acts = acts, ConvertedFromRecording = converted };
         result.Failures.AddRange(failures);
+        result.Warnings.AddRange(warnings);
         return result;
     }
 

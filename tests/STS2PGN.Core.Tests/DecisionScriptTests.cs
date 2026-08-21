@@ -78,19 +78,46 @@ public sealed class DecisionScriptTests
     [Fact]
     public void UnlocksMatchIsOrderInsensitiveAndExplainsDifferences()
     {
-        ScriptUnlocks expected = new(["B", "A"], ["X"], 2);
+        const string Vantom = "ENCOUNTER.VANTOM_BOSS";
+        const string Queen = "ENCOUNTER.QUEEN_BOSS";
+        ScriptUnlocks expected = new(["B", "A"], [Vantom], 2);
 
-        Assert.True(expected.Matches(new ScriptUnlocks(["A", "B"], ["X"], 2), out string difference));
+        Assert.True(expected.Matches(new ScriptUnlocks(["A", "B"], [Vantom], 2), out string difference, out IReadOnlyList<string> warnings));
         Assert.Equal(string.Empty, difference);
+        Assert.Empty(warnings);
 
-        Assert.False(expected.Matches(new ScriptUnlocks(["A", "B"], ["X", "Y"], 2), out difference));
-        Assert.StartsWith("encounters_seen:", difference);
-        Assert.Contains("extra live [Y]", difference);
+        Assert.False(expected.Matches(new ScriptUnlocks(["A"], [Vantom], 2), out difference));
+        Assert.StartsWith("epochs:", difference);
+        Assert.Contains("missing live [B]", difference);
 
-        Assert.True(expected.Matches(new ScriptUnlocks(["A", "B"], ["X"], 57), out _), "any positive run count is equivalent");
-        Assert.False(expected.Matches(new ScriptUnlocks(["A", "B"], ["X"], 0), out difference));
+        Assert.False(expected.Matches(new ScriptUnlocks(["A", "B"], [Vantom, Queen], 2), out difference));
+        Assert.StartsWith("encounters_seen (discovery bosses):", difference);
+        Assert.Contains($"extra live [{Queen}]", difference);
+        Assert.False(expected.Matches(new ScriptUnlocks(["A", "B"], [], 2), out difference));
+        Assert.Contains($"missing live [{Vantom}]", difference);
+
+        Assert.False(expected.Matches(new ScriptUnlocks(["A", "B"], [Vantom], 0), out difference));
         Assert.StartsWith("number_of_runs:", difference);
         Assert.False(new ScriptUnlocks([], [], 0).Matches(new ScriptUnlocks([], [], 1), out _));
+    }
+
+    [Fact]
+    public void UnlocksMatchTreatsGenerationInertDifferencesAsWarnings()
+    {
+        const string Vantom = "ENCOUNTER.VANTOM_BOSS";
+        ScriptUnlocks expected = new(["A"], [Vantom, "ENCOUNTER.JAW_WORM"], 2);
+
+        Assert.True(
+            expected.Matches(new ScriptUnlocks(["A"], [Vantom, "ENCOUNTER.CULTIST"], 57), out string difference, out IReadOnlyList<string> warnings),
+            "run-count drift past the first run and non-discovery encounters are not read during generation");
+        Assert.Equal(string.Empty, difference);
+        Assert.Equal(2, warnings.Count);
+        Assert.Contains(warnings, warning => warning.StartsWith("number_of_runs: script 2, live 57", StringComparison.Ordinal));
+        Assert.Contains(warnings, warning => warning.StartsWith("encounters_seen:", StringComparison.Ordinal)
+            && warning.Contains("missing live [ENCOUNTER.JAW_WORM], extra live [ENCOUNTER.CULTIST]", StringComparison.Ordinal));
+
+        Assert.Equal(12, ScriptUnlocks.DiscoveryBosses.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(ScriptUnlocks.DiscoveryBosses, id => Assert.EndsWith("_BOSS", id));
     }
 
     [Fact]
