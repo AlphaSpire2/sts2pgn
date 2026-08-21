@@ -1,9 +1,13 @@
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rewards;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens;
+using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
 using STS2PGN.Mod.Recording;
@@ -19,8 +23,38 @@ internal sealed class RewardDispatcher : IDecisionDispatcher
     public bool IsReady(ScriptDecision decision) => decision.Kind switch
     {
         "reward.claim" or "reward.skip" => LiveGame.TopOverlay is NRewardsScreen && LiveGame.LocalPlayer is { } me && RecorderService.ActiveRewardSetsFor(me.NetId).Any(),
-        _ => RunManager.Instance.TreasureRoomRelicSynchronizer.CurrentRelics is not null,
+        "treasure.choose_relic" => RunManager.Instance.TreasureRoomRelicSynchronizer.CurrentRelics is not null && RelicHolders().Count > 0,
+        "treasure.skip_relic" => RunManager.Instance.TreasureRoomRelicSynchronizer.CurrentRelics is not null
+            && (RelicHolders().Count > 0 || TreasureSkipButton() is not null),
+        _ => false,
     };
+
+    /// <summary>
+    /// The treasure chest is opened by an unrecorded click. Before it opens, the relic offer already
+    /// exists on the synchronizer, but the screen has no relic holders: a direct <c>PickRelicLocally</c>
+    /// is accepted (and recorded) while <c>NTreasureRoomRelicCollection.AnimateRelicAwards</c>, which
+    /// is what actually obtains the relic and re-enables Proceed, fails on the empty holder list.
+    /// Click the chest the way a player would and wait for the holders to appear.
+    /// </summary>
+    public bool TryAdvanceSurface(ScriptDecision decision)
+    {
+        if (decision.Kind is not ("treasure.choose_relic" or "treasure.skip_relic")
+            || LiveGame.TopOverlay is not null
+            || NRun.Instance?.TreasureRoom is not { } room
+            || RelicCollection(room) is { Visible: true })
+        {
+            return false;
+        }
+
+        NButton? chest = room.GetNodeOrNull<NButton>("%Chest");
+        if (!LiveGame.IsUsable(chest))
+        {
+            return false;
+        }
+
+        chest!.ForceClick();
+        return true;
+    }
 
     public VerifyResult Verify(ScriptDecision decision) => decision.Kind switch
     {
@@ -60,10 +94,27 @@ internal sealed class RewardDispatcher : IDecisionDispatcher
 
                 break;
             case "treasure.choose_relic":
+            {
+                // Click the relic holder (NTreasureRoomRelicCollection.PickRelic → PickRelicLocally),
+                // exactly as a player would; the synchronizer call is the fallback.
                 ScriptDecisionReader.TryGetInt(decision.Data, "relic_index", out int index);
-                RunManager.Instance.TreasureRoomRelicSynchronizer.PickRelicLocally(index);
+                NTreasureRoomRelicHolder? holder = RelicHolders().FirstOrDefault(candidate => candidate.Index == index);
+                if (LiveGame.IsUsable(holder))
+                {
+                    holder!.ForceClick();
+                }
+                else
+                {
+                    RunManager.Instance.TreasureRoomRelicSynchronizer.PickRelicLocally(index);
+                }
+
                 break;
+            }
+
             case "treasure.skip_relic":
+                // The Skip-labelled Proceed button also proceeds from the room in singleplayer
+                // (that is the following room.proceed decision), so skip through the synchronizer
+                // only; the room then re-enables Proceed for room.proceed to click.
                 RunManager.Instance.TreasureRoomRelicSynchronizer.SkipRelicLocally();
                 break;
         }
@@ -191,6 +242,26 @@ internal sealed class RewardDispatcher : IDecisionDispatcher
         return set.DisallowSkipping
             ? VerifyResult.Mismatch("the reward set cannot be skipped", decision.Data, offered)
             : VerifyResult.Success;
+    }
+
+    private static NTreasureRoomRelicCollection? RelicCollection(NTreasureRoom room) =>
+        room.GetNodeOrNull<NTreasureRoomRelicCollection>("%RelicCollection");
+
+    /// <summary>Visible, enabled relic holders of the opened chest (empty until the chest is open).</summary>
+    private static List<NTreasureRoomRelicHolder> RelicHolders()
+    {
+        if (NRun.Instance?.TreasureRoom is not { } room || RelicCollection(room) is not { Visible: true } collection)
+        {
+            return [];
+        }
+
+        return LiveGame.FindAll<NTreasureRoomRelicHolder>(collection).Where(LiveGame.IsUsable).ToList();
+    }
+
+    private static NProceedButton? TreasureSkipButton()
+    {
+        NProceedButton? button = NRun.Instance?.TreasureRoom?.ProceedButton;
+        return LiveGame.IsUsable(button) && button!.IsSkip ? button : null;
     }
 
     private static VerifyResult VerifyRelic(ScriptDecision decision)
