@@ -1,5 +1,6 @@
 using STS2PGN.Model;
 using STS2PGN.Parsing;
+using STS2PGN.Scripting;
 using STS2PGN.Validation;
 
 namespace STS2PGN.Tool;
@@ -8,17 +9,17 @@ internal static class ValidateCommand
 {
     public static int Run(string[] args)
     {
-        (IReadOnlyList<string> paths, Sts2PgnParseOptions parseOptions, bool quiet) = TraceLoader.ParseArguments(args);
+        ToolArguments arguments = TraceLoader.ParseArguments(args);
         bool anyError = false;
-        foreach (string path in paths)
+        foreach (string path in arguments.Paths)
         {
-            anyError |= !ValidateFile(path, parseOptions, quiet);
+            anyError |= !ValidateFile(path, arguments.ParseOptions, arguments.Quiet, arguments.ValidationMode);
         }
 
         return anyError ? 1 : 0;
     }
 
-    private static bool ValidateFile(string path, Sts2PgnParseOptions parseOptions, bool quiet)
+    private static bool ValidateFile(string path, Sts2PgnParseOptions parseOptions, bool quiet, Sts2PgnValidationMode mode)
     {
         LoadedTrace trace;
         try
@@ -31,7 +32,7 @@ internal static class ValidateCommand
             return false;
         }
 
-        Sts2PgnValidationResult result = Sts2PgnValidator.Validate(trace.Record);
+        Sts2PgnValidationResult result = Sts2PgnValidator.Validate(trace.Record, mode);
         int warningCount = result.Warnings.Count();
         bool clean = result.IsValid && warningCount == 0 && !trace.Record.RecoveredTruncatedFinalLine;
         if (clean && quiet)
@@ -42,7 +43,15 @@ internal static class ValidateCommand
         if (result.IsValid)
         {
             string suffix = warningCount == 0 ? "" : $", {warningCount} warning(s)";
-            Console.WriteLine($"{path}: valid ({trace.Record.Entries.Count} records, result {trace.Record.Result.ToToken()}{suffix})");
+            if (mode == Sts2PgnValidationMode.Script)
+            {
+                int decisions = DecisionScript.FromRecord(trace.Record).Decisions.Count;
+                Console.WriteLine($"{path}: valid script profile ({trace.Record.Entries.Count} records, {decisions} decisions{suffix})");
+            }
+            else
+            {
+                Console.WriteLine($"{path}: valid ({trace.Record.Entries.Count} records, result {trace.Record.Result.ToToken()}{suffix})");
+            }
         }
         else
         {

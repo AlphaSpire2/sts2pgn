@@ -41,6 +41,35 @@ internal static class RecorderService
     private static long? _pendingCrystalSphereSequence;
     private static JsonElement? _specialEventState;
     private static PendingResume? _pendingResume;
+    private static readonly Dictionary<(ulong PlayerId, uint ChoiceId), LiveChoiceOffer> LiveChoiceOffers = [];
+
+    /// <summary>Raised after a record was durably appended: (sequence, kind, data object as passed to the recorder).</summary>
+    public static event Action<long, string, object?>? Recorded;
+
+    /// <summary>Raised after a state observation was appended: (observed sequence, completion context).</summary>
+    public static event Action<long, string>? Settled;
+
+    /// <summary>Raised when a driver-only live offer (deck selection screen) was registered.</summary>
+    public static event Action? LiveOfferRegistered;
+
+    public static RecorderConfig Config => _config;
+    public static string? CurrentRecordingPath => _session?.Path;
+    public static RunState? CurrentState => _state;
+    public static long? LastDecisionSequence => _lastDecisionSequence;
+    public static bool IsRecording => _session is not null;
+
+    /// <summary>The live game objects behind a registered choice offer, for drive-time verification.</summary>
+    public static bool TryGetLiveOffer(ulong playerId, uint choiceId, out LiveChoiceOffer offer) =>
+        LiveChoiceOffers.TryGetValue((playerId, choiceId), out offer!);
+
+    public static IEnumerable<KeyValuePair<(ulong PlayerId, uint ChoiceId), LiveChoiceOffer>> PendingLiveOffers(ulong playerId) =>
+        LiveChoiceOffers.Where(pair => pair.Key.PlayerId == playerId);
+
+    public static bool TryGetActiveRewardSet(ulong playerId, int setId, out RewardsSet set) =>
+        ActiveRewardSets.TryGetValue((playerId, setId), out set!);
+
+    public static IEnumerable<RewardsSet> ActiveRewardSetsFor(ulong playerId) =>
+        ActiveRewardSets.Where(pair => pair.Key.PlayerId == playerId).Select(pair => pair.Value);
 
     public static void Initialize()
     {
@@ -197,6 +226,7 @@ internal static class RecorderService
             if (sequence.HasValue)
             {
                 _lastDecisionSequence = sequence;
+                Recorded?.Invoke(sequence.Value, kind, data);
             }
 
             return sequence;
@@ -309,7 +339,7 @@ internal static class RecorderService
                     deck_index = index,
                     fingerprint = PortablePayloads.CardFingerprint(card),
                 }).ToArray(),
-            });
+            }, player.Deck.Cards);
         }
 
         return sequence;
@@ -339,7 +369,7 @@ internal static class RecorderService
         ObserveAfter(resolution, "shop.purchase.settled");
     }
 
-    public static uint? RegisterUpcomingChoice(Player player, string context, object options)
+    public static uint? RegisterUpcomingChoice(Player player, string context, object options, object? liveModels = null)
     {
         if (_state is null)
         {
@@ -354,13 +384,55 @@ internal static class RecorderService
 
         IReadOnlyList<uint> ids = RunManager.Instance.PlayerChoiceSynchronizer.ChoiceIds;
         uint choiceId = playerIndex < ids.Count ? ids[playerIndex] : 0;
-        ChoiceOffers[(player.NetId, choiceId)] = JsonSerializer.SerializeToElement(new
+        JsonElement offered = JsonSerializer.SerializeToElement(new
         {
             context,
             options,
         });
+        ChoiceOffers[(player.NetId, choiceId)] = offered;
+        LiveChoiceOffers[(player.NetId, choiceId)] = new LiveChoiceOffer(context, offered, liveModels);
         ObserveAfter(_lastDecisionSequence, "choice.offered");
         return choiceId;
+    }
+
+    /// <summary>
+    /// Registers the live models behind a selection screen the recorder does not describe in the trace
+    /// (deck upgrade/transform/enchant/removal grids). Driver-side only: it never changes recorded
+    /// offers or the projected <c>player_choices</c>, so recordings stay byte-identical.
+    /// </summary>
+    public static void RegisterLiveOnlyChoice(string context, IReadOnlyList<CardModel> cards)
+    {
+        ExecuteSafely("registering live-only choice offer", () =>
+        {
+            Player? player = _state?.Players.FirstOrDefault(candidate => candidate.NetId == LocalPlayerId());
+            if (player is null)
+            {
+                return;
+            }
+
+            int playerIndex = _state!.Players.ToList().FindIndex(candidate => candidate.NetId == player.NetId);
+            IReadOnlyList<uint> ids = RunManager.Instance.PlayerChoiceSynchronizer.ChoiceIds;
+            // The screen opens after ReserveChoiceId, so the pending id is the last one handed out.
+            uint choiceId = playerIndex >= 0 && playerIndex < ids.Count && ids[playerIndex] > 0 ? ids[playerIndex] - 1 : 0;
+            (ulong, uint) key = (player.NetId, choiceId);
+            if (LiveChoiceOffers.ContainsKey(key))
+            {
+                return;
+            }
+
+            JsonElement offered = JsonSerializer.SerializeToElement(new
+            {
+                context,
+                options = cards.Select((card, index) => new
+                {
+                    deck_index = player.Deck.Cards.ToList().IndexOf(card),
+                    index,
+                    fingerprint = PortablePayloads.CardFingerprint(card),
+                }).ToArray(),
+            });
+            LiveChoiceOffers[key] = new LiveChoiceOffer(context, offered, cards, RecordedInTrace: false);
+            LiveOfferRegistered?.Invoke();
+        });
     }
 
     public static void RegisterReservedChoice(Player player, uint choiceId)
@@ -379,7 +451,7 @@ internal static class RecorderService
             .Select(alternative => alternative.OptionId.ToLowerInvariant())
             .ToArray();
 
-        ChoiceOffers[(player.NetId, choiceId)] = JsonSerializer.SerializeToElement(new
+        JsonElement offered = JsonSerializer.SerializeToElement(new
         {
             context = "card_reward",
             options = new
@@ -392,6 +464,8 @@ internal static class RecorderService
                 }).ToArray(),
             },
         });
+        ChoiceOffers[(player.NetId, choiceId)] = offered;
+        LiveChoiceOffers[(player.NetId, choiceId)] = new LiveChoiceOffer("card_reward", offered, reward);
         ObserveAfter(_lastDecisionSequence, "choice.offered");
     }
 
@@ -403,6 +477,7 @@ internal static class RecorderService
         }
 
         ChoiceOffers.Remove((player.NetId, choiceId.Value));
+        LiveChoiceOffers.Remove((player.NetId, choiceId.Value));
     }
 
     private static void OnRunStarted(RunState state)
@@ -427,6 +502,7 @@ internal static class RecorderService
             SeedRoomStack(state);
 
             ChoiceOffers.Clear();
+            LiveChoiceOffers.Clear();
             ActiveCardRewards.Clear();
             ActiveRewardSets.Clear();
             PendingRestActions.Clear();
@@ -617,6 +693,7 @@ internal static class RecorderService
     private static void RecordPlayerChoice(Player player, uint choiceId, NetPlayerChoiceResult choice)
     {
         ChoiceOffers.Remove((player.NetId, choiceId), out JsonElement offered);
+        LiveChoiceOffers.Remove((player.NetId, choiceId));
         JsonElement? offeredChoice = offered.ValueKind == JsonValueKind.Undefined ? null : offered;
         string kind = choice.type switch
         {
@@ -827,6 +904,7 @@ internal static class RecorderService
         JsonElement recorderState = BuildRecorderState();
         JsonElement state = session.CaptureState(recorderState);
         session.Observe(sequence.Value, context, state);
+        Settled?.Invoke(sequence.Value, context);
     }
 
     private static JsonElement BuildRecorderState() => JsonSerializer.SerializeToElement(new
@@ -897,6 +975,7 @@ internal static class RecorderService
             _state = null;
             RoomStack.Clear();
             ChoiceOffers.Clear();
+            LiveChoiceOffers.Clear();
             ActiveCardRewards.Clear();
             ActiveRewardSets.Clear();
             PendingRestActions.Clear();
@@ -932,6 +1011,7 @@ internal static class RecorderService
         _state = null;
         RoomStack.Clear();
         ChoiceOffers.Clear();
+        LiveChoiceOffers.Clear();
         ActiveCardRewards.Clear();
         ActiveRewardSets.Clear();
         PendingRestActions.Clear();
@@ -949,6 +1029,9 @@ internal static class RecorderService
 
     private static void ReportError(string operation, Exception exception) =>
         GD.PrintErr($"[STS2PGN] Error while {operation}: {exception}");
+
+    /// <summary>A registered choice offer plus the live models it was built from (cards, bundles, relics, or a CardReward).</summary>
+    public sealed record LiveChoiceOffer(string Context, JsonElement Offered, object? Models, bool RecordedInTrace = true);
 
     private sealed record RoomTraceData(
         [property: JsonPropertyName("id")] int? Id,

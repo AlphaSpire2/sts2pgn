@@ -34,11 +34,78 @@ The simulator adapter must:
 6. normalize its state using the same projection rules; and
 7. stop at and report the first mismatch unless explicitly configured to collect later differences.
 
-### In-game validation replayer
+### In-game playback driver
 
-The in-game replayer is a completeness test for the trace. It reconstructs the source snapshot and feeds decisions through authoritative STS2 APIs. It must disable normal saves, profile progress, achievements, metrics, run history, and leaderboard submission.
+The playback driver (shipped inside the STS2_PGN mod, `Playback/`) executes a
+*decision script* (see the decision-script profile in `docs/format.md`) in the real
+game while the normal recorder records the session. A script is a proposal produced by a
+simulator; the recording the driver produces is the conformance artifact and is replayed
+back through the simulator's comparator. Divergences are therefore caught twice: at
+drive time (the game offers something other than the script expects) and at replay time
+(observation mismatch). The real game stays the oracle; a script never is.
 
-Successful in-game replay shows that the trace captured enough input. It does not by itself validate a simulator.
+Launch:
+
+- `--sts2pgn-script=<file|directory|list.txt>` on the game command line. A directory
+  runs every `*.sts2pgn` in ordinal filename order; a `.txt` list runs one path per line
+  (`#` comments). The batch starts once the main menu is ready, runs scripts back to back
+  (returning to the main menu between them), writes reports, and quits the game with the
+  batch exit code.
+- The dev-console command `sts2pgn drive <path>` does the same interactively and never
+  quits.
+
+Per script, in order:
+
+1. **Pre-flight — refuse rather than reinterpret.** Parse and validate the script in
+   script mode; compare `GameVersion`, `GameCommit`, `ModelIdHash`, `Mode` (`CUSTOM`),
+   character, and ascension with the live build and profile; compare
+   `run.start.data.state.players[0].unlocks` and `acts[]` with the live profile's unlock
+   state and the acts the seed generates on it; refuse when a run is in progress or a run
+   save exists. Any failure is `refused_at_start` with every mismatch listed and no run
+   started.
+2. **Start the run** through the API the custom-run screen uses
+   (`NGame.StartNewSingleplayerRun(..., GameMode.Custom, ...)`), with `shouldSave: true`
+   so the recorder's save/resume path and `GameStartTime` header match normal play. The
+   recorder opens an ordinary recording (`RecorderVersion`, never `Producer`).
+3. **Drive, one decision at a time:** *wait* until the game is idle and the record's
+   surface is present (no running action, empty queue, no modal, the expected screen or
+   phase) → *verify* the script's fingerprints against what the game offers (hand card
+   and target, travelable map point, reward set and entry, event/rest option, merchant
+   entry, relic list, every option of a registered choice offer) → *submit* through the
+   same game-code path a player's input reaches (see the driver table in
+   `docs/action-coverage.md`) → *settle* when the recorder reports the decision recorded
+   and its completion observation emitted. A verification mismatch is
+   `stopped_at_record` with the record sequence, the expected value, and what the game
+   offered. A recorded payload whose identity differs from the script is also
+   `stopped_at_record` (`recorded_mismatch`). The driver never remaps an index, set ID,
+   or option.
+4. **Finish:** `completed` when every decision settled; `game_error` on a driver
+   exception, a per-record timeout (`playback_timeout_seconds`, default 30), or an
+   unmapped record kind (`unsupported_record`).
+
+Reports are written to the recorder's `output_directory`:
+
+- `<script-name>.playback.json`: `status` (`completed`, `refused_at_start`,
+  `stopped_at_record`, `game_error`), `reason`, `message`, `stopped_at_sequence`,
+  `stopped_at_decision`, `kind`, `expected`, `offered`, `precondition_failures`,
+  `decisions_total`/`decisions_completed`, `recording_path`, `unlocks_after_run`, and
+  timestamps.
+- `playback-summary.json`: one row per script plus `exit_code`: `0` all completed, `3`
+  any stopped at a record, `4` any refused, `5` any game error (the worst status wins).
+
+Profile drift: the game adds every won encounter to the profile's encounters-seen set
+even in Custom mode, so the live unlock state changes after the first run of a batch.
+The driver stays strict and reports `unlocks_after_run` so the simulator can generate the
+next script from the state the profile is actually in (chained generation).
+
+The driver must never bypass the recorder: nested choices are answered by completing the
+game's own selection screen (which makes the game synchronize the accepted result), not
+by calling the synchronizer directly or installing a test selector. A driver fault
+degrades to a report, never a crash.
+
+Successful playback shows that the script was executable on the real game and yields a
+recording that captured the run. It does not by itself validate a simulator; the replay
+of the recording does.
 
 ## Record processing algorithm
 

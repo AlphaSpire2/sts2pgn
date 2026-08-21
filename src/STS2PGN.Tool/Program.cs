@@ -50,6 +50,7 @@ public static class Program
         writer.WriteLine("Options:");
         writer.WriteLine("  --no-recover   Treat a truncated unterminated final line as a parse error.");
         writer.WriteLine("  --quiet        validate: print only files with problems.");
+        writer.WriteLine("  --script       validate: check the decision-script profile (Producer header) instead of a recording.");
     }
 }
 

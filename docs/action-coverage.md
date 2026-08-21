@@ -112,6 +112,41 @@ The reference mod exposes additional progression controls that must be audited e
 | tutorial/modal dismissal | UI/profile progression outside semantic simulator state | Excluded |
 | non-interactive mode, menu/profile/lobby actions | excluded from run trace | Excluded |
 
+## Playback driver entry points
+
+The playback driver (`src/STS2PGN.Mod/Playback/`) submits scripted decisions through the
+same game-code paths a player's input reaches, so the recorder's existing hooks record
+them unchanged. Per record kind: what the driver waits for, what it verifies against the
+live game before acting, the call it makes, and the recorder context that settles it.
+
+| Script kind | Ready when | Verified against | Submit call | Settles on |
+|---|---|---|---|---|
+| `combat.play_card` | combat in progress, player side, queue idle | hand card by `combat_card_index` + `card` fingerprint; target creature `combat_id` + `model_id` | `ActionQueueSynchronizer.RequestEnqueue(new PlayCardAction(card, target))` | `action.settled` or `choice.offered` |
+| `combat.use_potion` | idle | `potion_slot` model + target | `PotionModel.EnqueueManualUse(target)` | `action.settled` |
+| `combat.discard_potion` | idle | `potion_slot` model | discard action enqueue | `action.settled` |
+| `combat.end_turn` | player side, not yet ended, `turn` matches | turn number | `PlayerCmd.EndTurn(player, canBackOut: false)` (recorded by `DirectEndTurnPatch`) | `combat.player_turn.start` / reward or run-end settle |
+| `map.choose` | map screen open | travelable point at `(col,row)` | `NMapScreen.OnMapPointSelectedLocally(point)` | `room.enter` |
+| `act.next` | act-end surface | — | `ActChangeSynchronizer.SetLocalPlayerReady()` | `act.enter` |
+| `room.proceed` | terminal rewards screen | not Crystal Sphere | `RunManager.ProceedFromTerminalRewardsScreen()` | `reward.settled` / map open |
+| `event.choose` | event room, options shown | `option_index` + `option_id`, unlocked | `EventSynchronizer.ChooseLocalOption(index)` | `event.choice.settled` / `room.enter` / `choice.offered` |
+| `event.advance` | ancient dialogue shown | `event_id` | dialogue hitbox click | `event.dialogue.settled` |
+| `rest.choose` | rest site options shown | enabled option with `option_id` | `RestSiteSynchronizer.ChooseLocalOption(index)` | `rest.settled` |
+| `shop.purchase` | merchant inventory open | entry at `inventory_index`/`entry_index`, type, group, model, stocked, affordable | `MerchantEntry.OnTryPurchaseWrapper(inventory)` | `shop.purchase.settled` |
+| `shop.remove_card` | merchant inventory open | removal entry stocked/affordable, `cost` | `OnTryPurchaseWrapper` on the removal entry | `choice.offered` then `shop.remove_card.settled` |
+| `reward.claim` / `reward.skip` | rewards set active | set by `set_id`; `Rewards[reward_index]` fingerprint, not yet selected; skipping allowed | `RewardsSetSynchronizer.SelectLocalReward(reward)` / `SkipLocalRewardsSet()` | `reward.claim.settled` / `reward.skip.settled` |
+| `treasure.choose_relic` / `skip_relic` | relic offer present | `offered_relics` equals `CurrentRelics`; `relic_index` model | `TreasureRoomRelicSynchronizer.PickRelicLocally(index)` / skip | `action.settled` |
+| `choice.index` | a registered choice offer is pending and its screen is open | offer `context` and every option fingerprint/option id equal the script's `offered` | complete the open selection screen (press the live holders, confirm/skip) | decision recorded, then the parent's settle |
+| `choice.cards` | as above | deck/hand card by index + fingerprint; registered offer if any | complete the open selection screen | decision recorded, then the parent's settle |
+| `choice.player`, `choice.unknown`, `game.unknown_action`, `combat.undo_end_turn`, `event.crystal_sphere.*` | — | — | rejected by script validation; runtime backstop reports `unsupported_record` | — |
+
+Nested choices are never submitted through `PlayerChoiceSynchronizer.SyncLocalChoice`:
+`CardSelectCmd`, `CardReward`, and `RelicSelectCmd` await their screen and call it
+themselves, and `CardSelectCmd.UseSelector` bypasses the synchronizer (and therefore the
+recorder) entirely. Deck grids opened by `CardSelectCmd.FromDeck*` (upgrade, transform,
+enchant, generic removal) register *driver-side only* live offers (`deck_upgrade`,
+`deck_transform`, `deck_enchant`, `deck_grid`) so the driver can locate the live cards; these
+never enter the trace or the projected `player_choices`, so recordings are unchanged.
+
 ## Observation coverage
 
 The recorder must project enough authoritative state to validate effects that are not player actions:

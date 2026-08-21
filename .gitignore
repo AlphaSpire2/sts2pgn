@@ -20,3 +20,6 @@ TestResults/
 
 # Recorded run traces are regenerable acceptance artifacts, not source.
 *.sts2pgn
+
+# Hand-written samples (minimal recording, decision script) are source.
+!examples/*.sts2pgn

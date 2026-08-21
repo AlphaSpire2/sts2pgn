@@ -5,12 +5,14 @@ STS2PGN records Slay the Spire 2 runs as deterministic, human-readable traces in
 The long-term purpose is simulator conformance testing: record a run in the real game, feed the resulting `.sts2pgn` file to an external simulator, replay the same decisions, and identify the first state difference between the simulator and STS2.
 
 > [!IMPORTANT]
-> Phase 4 is implemented in recorder 0.6.0. Traces now contain a complete portable run projection at run start and authoritative observations for generated maps, rooms, choices, rewards, combat turns, settled actions, act transitions, and run end. The game-coupled assembly still needs to be built and smoke-tested with matching STS2 assemblies.
+> Recorder 0.8.0 adds a *decision-script* profile of the format and an in-game *playback driver*: a simulator proposes a run as a script, the mod executes it in the real game while recording normally, and the recording is replayed back through the simulator. The game-coupled assembly still needs to be built and smoke-tested with matching STS2 assemblies.
 
 ## Architecture
 
 ```text
 Real STS2 + recorder mod -> .sts2pgn trace -> external simulator -> divergence report
+
+simulator -> decision script -> playback driver in the real game (recording) -> simulator replay
 ```
 
 - `STS2PGN.Core` is a game-independent model, parser, writer, validator, and canonical state-hashing library. Simulator integrations need only this library or the documented format.
@@ -23,8 +25,8 @@ The trace contains initial state, ordered semantic actions, compatibility metada
 
 ```text
 src/STS2PGN.Core/          Portable trace model and codec
-src/STS2PGN.Mod/           STS2 recorder and replay-validation mod
-src/STS2PGN.Tool/          sts2pgn CLI: validate and summarize traces
+src/STS2PGN.Mod/           STS2 recorder mod and script playback driver
+src/STS2PGN.Tool/          sts2pgn CLI: validate (recordings and scripts) and summarize traces
 tests/STS2PGN.Core.Tests/  Game-independent tests
 docs/format.md             Version-one format and projection specification
 docs/replay-contract.md    Recorder/simulator comparison contract
@@ -94,7 +96,8 @@ dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll summarize my-run.sts2pgn
 ```
 
 `--no-recover` treats a crash-truncated final line as an error instead of recovering the
-prefix; `validate --quiet` prints only files with problems.
+prefix; `validate --quiet` prints only files with problems; `validate --script` checks a
+decision script against the script profile instead of the recording profile.
 
 ## Install the recorder mod
 
@@ -125,6 +128,9 @@ The output directory is configured in `config.json`, installed beside `STS2_PGN.
 - A Godot path such as `user://my-replays` is converted to its native OS path.
 - A missing or invalid configuration falls back to the profile-scoped `sts2pgn` directory and logs the reason.
 
+`playback_timeout_seconds` (optional, default 30) bounds how long the playback driver waits
+for any single step.
+
 The configuration is read when the mod initializes, so restart the game after changing it.
 
 The recorder captures the exact STS2 save snapshot, run/room/act lifecycle, map movement, combat actions, synchronized player choices, event and rest choices, rewards, treasure, shop operations, progression controls, and Crystal Sphere interactions. Asynchronous actions are written before any nested choice and followed by a correlated resolve record. Cards, rewards, model IDs, enums, actors, and offered index choices use portable semantic fingerprints. Crystal Sphere records its complete generated 11×11 board and post-generation RNG position before tool changes and logical cell coordinates because STS2 marks that minigame as nondeterministic.
@@ -132,6 +138,45 @@ The recorder captures the exact STS2 save snapshot, run/room/act lifecycle, map 
 Recorder 0.6.0 also writes full `run.core` observations as the run progresses. These include generated acts and map topology, current room stack and decision offers, player inventories and RNG state, and complete combat state. Observations are emitted only at explicit completion signals: action completion, map generation, room/act events, completed event/reward/rest/shop tasks, combat turn events, and run termination.
 
 Each accepted record is appended and flushed immediately. A clean run end writes the authoritative terminal result, then atomically updates the PGN-style `Result` header. An interrupted run remains a strictly parseable prefix ending in exactly one newline.
+
+## Decision scripts and playback
+
+A *decision script* is a `.sts2pgn` file that proposes a run instead of recording one. It
+uses the same grammar and record kinds, but carries a `[Producer "name/version"]` header
+instead of `RecorderVersion`, uses `Mode CUSTOM` (the only seeded mode the game starts),
+has a `run.start` that states the expected profile unlocks and acts, and lists only the
+decisions — no observations, digests, resolves, or `run.finish`. See the profile section
+of [docs/format.md](docs/format.md) and `examples/script-minimal.sts2pgn`.
+
+```bash
+dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll validate --script my-script.sts2pgn
+```
+
+The playback driver lives in the mod and executes scripts in the real game while the
+recorder records the session as a normal authoritative recording:
+
+```bash
+# One script, a directory of scripts, or a .txt list (one path per line); quits with an exit code
+"Slay the Spire 2" --sts2pgn-script="C:\scripts\batch"
+```
+
+or, from the in-game dev console, `sts2pgn drive <path>` (never quits).
+
+For every script the driver first checks the game build (`GameVersion`, `GameCommit`,
+`ModelIdHash`), the character, the ascension, and the live profile's unlock state and
+seeded acts, and refuses to start on any mismatch. It then starts the seeded custom run and
+drives one decision at a time: wait for the game to be idle and the right screen to be up,
+verify the script's fingerprints against what the game actually offers, submit through the
+same game-code path a player's input reaches, and wait for the recorder to record and
+settle it. A mismatch stops the script at that record with the expected and offered values
+— the first game-versus-simulator divergence.
+
+Reports go to the recorder's output directory: `<script>.playback.json` per script
+(`completed`, `refused_at_start`, `stopped_at_record`, or `game_error`, with the record,
+expected/offered values, the recording path, and the profile's unlock state after the
+run) and `playback-summary.json` for the batch. The process exit code is `0` when every
+script completed, otherwise `3` (stopped at a record), `4` (refused), or `5` (game error).
+Details are in [docs/replay-contract.md](docs/replay-contract.md).
 
 ## Core library usage
 
@@ -172,6 +217,15 @@ string text = Sts2PgnWriter.Write(record);
 `Sts2PgnParser` preserves unknown tags, action kinds, and payload properties. By default it recovers a valid prefix when only the unterminated final JSON record was truncated. Set `RecoverTruncatedFinalLine` to `false` for strict archival validation.
 
 `CanonicalJson.ComputeSha256` sorts object properties and normalizes JSON numbers before hashing portable state observations.
+
+Load a decision script (validates it in script mode and extracts the drivable decisions):
+
+```csharp
+using STS2PGN.Scripting;
+
+DecisionScript script = DecisionScript.Load(File.OpenText("proposal.sts2pgn"));
+Console.WriteLine($"{script.Identity.Seed}: {script.Decisions.Count} decisions");
+```
 
 Run a validated trace through a simulator adapter:
 

@@ -5,10 +5,11 @@ using MegaCrit.Sts2.Core.Saves;
 
 namespace STS2PGN.Mod.Recording;
 
-internal sealed record RecorderConfig(string OutputDirectory)
+internal sealed record RecorderConfig(string OutputDirectory, int PlaybackTimeoutSeconds = RecorderConfig.DefaultPlaybackTimeoutSeconds)
 {
     public const string FileName = "config.json";
     public const string DefaultOutputDirectory = "sts2pgn";
+    public const int DefaultPlaybackTimeoutSeconds = 30;
 
     public static RecorderConfig Load()
     {
@@ -39,7 +40,16 @@ internal sealed record RecorderConfig(string OutputDirectory)
                 return Default();
             }
 
-            return new RecorderConfig(outputDirectory.GetString()!.Trim());
+            int timeout = DefaultPlaybackTimeoutSeconds;
+            if (document.RootElement.TryGetProperty("playback_timeout_seconds", out JsonElement timeoutElement)
+                && timeoutElement.ValueKind == JsonValueKind.Number
+                && timeoutElement.TryGetInt32(out int configuredTimeout)
+                && configuredTimeout > 0)
+            {
+                timeout = configuredTimeout;
+            }
+
+            return new RecorderConfig(outputDirectory.GetString()!.Trim(), timeout);
         }
         catch (Exception exception)
         {
