@@ -7,6 +7,7 @@
 - Phase 3 completed and trace-validated with recorder 0.4.2: the recorder captures the supported single-player decision surface, writes portable fingerprints and correctly ordered nested operations, handles Crystal Sphere explicitly, durably flushes each record, and finalizes results atomically.
 - Phase 4 implementation completed in recorder 0.6.0: `run_start.core` and `run.core` cover generated acts/maps, rooms and offered choices, player state, live combat, settled actions, turns, reward/shop/rest boundaries, act transitions, and run end. A fresh in-game trace validation remains an acceptance task for Phase 6 because matching game assemblies are not available in this workspace.
 - Phase 5 portable foundation completed: the Core provides an ordered replay timeline, simulator-adapter contract, canonical state comparison, and first-divergence/result reporting. Game-coupled playback can now build on the completed Phase 4 projection contract.
+- `sts2pgn` CLI added (`src/STS2PGN.Tool`): `validate` and `summarize` commands over the portable Core, for acceptance runs and trace inspection.
 
 ## Goal
 

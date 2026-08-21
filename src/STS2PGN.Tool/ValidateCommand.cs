@@ -1,0 +1,66 @@
+using STS2PGN.Model;
+using STS2PGN.Parsing;
+using STS2PGN.Validation;
+
+namespace STS2PGN.Tool;
+
+internal static class ValidateCommand
+{
+    public static int Run(string[] args)
+    {
+        (IReadOnlyList<string> paths, Sts2PgnParseOptions parseOptions, bool quiet) = TraceLoader.ParseArguments(args);
+        bool anyError = false;
+        foreach (string path in paths)
+        {
+            anyError |= !ValidateFile(path, parseOptions, quiet);
+        }
+
+        return anyError ? 1 : 0;
+    }
+
+    private static bool ValidateFile(string path, Sts2PgnParseOptions parseOptions, bool quiet)
+    {
+        LoadedTrace trace;
+        try
+        {
+            trace = TraceLoader.Load(path, parseOptions);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Sts2PgnParseException)
+        {
+            Console.Error.WriteLine($"{path}: {exception.Message}");
+            return false;
+        }
+
+        Sts2PgnValidationResult result = Sts2PgnValidator.Validate(trace.Record);
+        int warningCount = result.Warnings.Count();
+        bool clean = result.IsValid && warningCount == 0 && !trace.Record.RecoveredTruncatedFinalLine;
+        if (clean && quiet)
+        {
+            return true;
+        }
+
+        if (result.IsValid)
+        {
+            string suffix = warningCount == 0 ? "" : $", {warningCount} warning(s)";
+            Console.WriteLine($"{path}: valid ({trace.Record.Entries.Count} records, result {trace.Record.Result.ToToken()}{suffix})");
+        }
+        else
+        {
+            Console.WriteLine($"{path}: INVALID ({result.Errors.Count()} error(s), {warningCount} warning(s))");
+        }
+
+        if (trace.Record.RecoveredTruncatedFinalLine)
+        {
+            Console.WriteLine("  note: recovered a truncated unterminated final line (crash prefix)");
+        }
+
+        foreach (ValidationIssue issue in result.Issues)
+        {
+            string severity = issue.Severity == ValidationSeverity.Error ? "error" : "warning";
+            string location = issue.Location is null ? "" : $" @ {issue.Location}";
+            Console.WriteLine($"  {severity} {issue.Code}{location}: {issue.Message}");
+        }
+
+        return result.IsValid;
+    }
+}

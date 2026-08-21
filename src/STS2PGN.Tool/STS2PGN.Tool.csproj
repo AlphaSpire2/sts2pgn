@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>sts2pgn</AssemblyName>
+    <RootNamespace>STS2PGN.Tool</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\STS2PGN.Core\STS2PGN.Core.csproj" />
+  </ItemGroup>
+
+</Project>

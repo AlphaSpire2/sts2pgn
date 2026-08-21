@@ -24,6 +24,7 @@ The trace contains initial state, ordered semantic actions, compatibility metada
 ```text
 src/STS2PGN.Core/          Portable trace model and codec
 src/STS2PGN.Mod/           STS2 recorder and replay-validation mod
+src/STS2PGN.Tool/          sts2pgn CLI: validate and summarize traces
 tests/STS2PGN.Core.Tests/  Game-independent tests
 docs/format.md             Version-one format and projection specification
 docs/replay-contract.md    Recorder/simulator comparison contract
@@ -76,6 +77,24 @@ PowerShell users can run:
 ```
 
 `build.ps1` also reads `STS2_GAME_DIR`. Its output is `out/STS2_PGN/`.
+
+## Inspect traces from the command line
+
+The `sts2pgn` CLI is a consumer of the portable core — it never ships with the mod and
+needs no game files:
+
+```bash
+dotnet build src/STS2PGN.Tool/STS2PGN.Tool.csproj -c Release
+
+# Strict parse + full validation; non-zero exit on any error
+dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll validate my-run.sts2pgn
+
+# Headers, record statistics, run progress, and observation coverage
+dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll summarize my-run.sts2pgn
+```
+
+`--no-recover` treats a crash-truncated final line as an error instead of recovering the
+prefix; `validate --quiet` prints only files with problems.
 
 ## Install the recorder mod
 
