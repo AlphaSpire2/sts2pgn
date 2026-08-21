@@ -1,5 +1,8 @@
+using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.Rewards;
 using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
@@ -27,15 +30,34 @@ internal sealed class RewardDispatcher : IDecisionDispatcher
         _ => VerifyResult.Success,
     };
 
+    /// <summary>
+    /// Rewards are taken through the loot screen's own buttons, not the synchronizer: only
+    /// <c>NRewardButton.GetReward</c> emits <c>RewardClaimed</c>, which is what makes
+    /// <c>NRewardsScreen</c> drop the button and (for a non-terminal screen, e.g. an event's loot)
+    /// remove itself once every reward is gone. A direct synchronizer call leaves the screen up
+    /// with stale buttons and the run never reaches the next decision.
+    /// </summary>
     public Task SubmitAsync(ScriptDecision decision)
     {
         switch (decision.Kind)
         {
             case "reward.claim":
-                _ = RunManager.Instance.RewardsSetSynchronizer.SelectLocalReward(ResolveReward(decision)!);
+            {
+                Reward reward = ResolveReward(decision)!;
+                if (!ClickRewardButton(reward))
+                {
+                    _ = RunManager.Instance.RewardsSetSynchronizer.SelectLocalReward(reward);
+                }
+
                 break;
+            }
+
             case "reward.skip":
-                RunManager.Instance.RewardsSetSynchronizer.SkipLocalRewardsSet();
+                if (!ClickSkipButton())
+                {
+                    RunManager.Instance.RewardsSetSynchronizer.SkipLocalRewardsSet();
+                }
+
                 break;
             case "treasure.choose_relic":
                 ScriptDecisionReader.TryGetInt(decision.Data, "relic_index", out int index);
@@ -47,6 +69,48 @@ internal sealed class RewardDispatcher : IDecisionDispatcher
         }
 
         return Task.CompletedTask;
+    }
+
+    private static readonly AccessTools.FieldRef<NRewardsScreen, bool> IsTerminalScreen =
+        AccessTools.FieldRefAccess<NRewardsScreen, bool>("_isTerminal");
+
+    private static bool ClickRewardButton(Reward reward)
+    {
+        if (LiveGame.TopOverlay is not NRewardsScreen screen)
+        {
+            return false;
+        }
+
+        NRewardButton? button = LiveGame.FindAll<NRewardButton>(screen).FirstOrDefault(candidate => ReferenceEquals(candidate.Reward, reward));
+        if (!LiveGame.IsUsable(button))
+        {
+            return false;
+        }
+
+        button!.ForceClick();
+        return true;
+    }
+
+    /// <summary>
+    /// The Skip button of a non-terminal loot screen is exactly <c>SkipLocalRewardsSet</c> plus
+    /// closing the screen. On a terminal screen the same button proceeds from the room instead
+    /// (recorded as <c>room.proceed</c>), so a scripted <c>reward.skip</c> there falls back to the synchronizer.
+    /// </summary>
+    private static bool ClickSkipButton()
+    {
+        if (LiveGame.TopOverlay is not NRewardsScreen screen || IsTerminalScreen(screen))
+        {
+            return false;
+        }
+
+        NProceedButton? button = LiveGame.FindAll<NProceedButton>(screen).FirstOrDefault(candidate => candidate.IsSkip);
+        if (!LiveGame.IsUsable(button))
+        {
+            return false;
+        }
+
+        button!.ForceClick();
+        return true;
     }
 
     private static RewardsSet? ResolveSet(ScriptDecision decision)
