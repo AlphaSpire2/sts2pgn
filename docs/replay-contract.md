@@ -53,6 +53,11 @@ Launch:
   batch exit code.
 - The dev-console command `sts2pgn drive <path>` does the same interactively and never
   quits.
+- `sts2pgn handoff <file>` accepts exactly one partial script. After its final decision
+  settles successfully, the driver detaches without abandoning the run or stopping the
+  recorder; subsequent player inputs continue the same authoritative recording. A
+  validation failure, mismatch, timeout, exception, or `sts2pgn cancel` retains normal
+  cleanup and abandons the playback run rather than handing off a divergent state.
 
 Per script, in order:
 
@@ -84,15 +89,18 @@ Per script, in order:
    or option.
 4. **Finish:** `completed` when every decision settled; `game_error` on a driver
    exception, a per-record timeout (`playback_timeout_seconds`, default 30), or an
-   unmapped record kind (`unsupported_record`).
+   unmapped record kind (`unsupported_record`). Standard drive mode returns to the main
+   menu. Successful handoff mode instead requires an active run and recorder, marks the
+   report `handed_off: true`, detaches the driver, and leaves both active for normal play.
 
 Reports are written to the recorder's `output_directory`:
 
 - `<script-name>.playback.json`: `status` (`completed`, `refused_at_start`,
   `stopped_at_record`, `game_error`), `reason`, `message`, `stopped_at_sequence`,
   `stopped_at_decision`, `kind`, `expected`, `offered`, `precondition_failures`,
-  `decisions_total`/`decisions_completed`, `recording_path`, `unlocks_after_run`, and
-  timestamps.
+  `decisions_total`/`decisions_completed`, `recording_path`, `handed_off`, optional
+  `unlocks_after_run`, and timestamps. `unlocks_after_run` is omitted on handoff because
+  the run is still in progress.
 - `playback-summary.json`: one row per script plus `exit_code`: `0` all completed, `3`
   any stopped at a record, `4` any refused, `5` any game error (the worst status wins).
 

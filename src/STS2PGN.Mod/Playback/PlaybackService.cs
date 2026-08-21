@@ -1,13 +1,14 @@
 using Godot;
 using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Runs;
 using STS2PGN.Mod.Recording;
 
 namespace STS2PGN.Mod.Playback;
 
 /// <summary>
 /// Batch orchestrator: waits for the main menu, then for each script runs pre-flight → start →
-/// drive → report → back to the main menu. Nothing here may throw into the game; every failure
-/// becomes a report row.
+/// drive → report → back to the main menu, unless a successful single-script handoff leaves the
+/// live run under player control. Nothing here may throw into the game; every failure becomes a report row.
 /// </summary>
 internal static class PlaybackService
 {
@@ -42,9 +43,15 @@ internal static class PlaybackService
             return false;
         }
 
+        if (args.HandoffWhenDone && (args.QuitWhenDone || args.ScriptPaths.Count != 1))
+        {
+            error = "handoff requires exactly one interactive script";
+            return false;
+        }
+
         _active = args;
         _cancellation = new CancellationTokenSource();
-        GD.Print($"[STS2PGN] Playback batch: {args.ScriptPaths.Count} script(s), quit when done: {args.QuitWhenDone}");
+        GD.Print($"[STS2PGN] Playback batch: {args.ScriptPaths.Count} script(s), quit when done: {args.QuitWhenDone}, handoff: {args.HandoffWhenDone}");
         _ = RunBatchAsync(args, _cancellation.Token);
         error = string.Empty;
         return true;
@@ -63,7 +70,7 @@ internal static class PlaybackService
             foreach (string scriptPath in args.ScriptPaths)
             {
                 cancellation.ThrowIfCancellationRequested();
-                PlaybackReport report = await RunScriptAsync(scriptPath, cancellation);
+                PlaybackReport report = await RunScriptAsync(scriptPath, args.HandoffWhenDone, cancellation);
                 report.FinishedAt = DateTimeOffset.UtcNow;
                 string reportPath = PlaybackReportWriter.Write(outputDirectory, report);
                 summary.Scripts.Add(new PlaybackSummaryRow(
@@ -72,14 +79,15 @@ internal static class PlaybackService
                     report.Reason,
                     report.StoppedAtSequence,
                     report.RecordingPath,
-                    reportPath));
+                    reportPath,
+                    report.HandedOff));
                 GD.Print($"[STS2PGN] Playback {Path.GetFileName(scriptPath)}: {report.Status} {report.Reason} {report.Message}");
             }
         }
         catch (Exception exception)
         {
             GD.PrintErr($"[STS2PGN] Playback batch aborted: {exception}");
-            summary.Scripts.Add(new PlaybackSummaryRow("<batch>", PlaybackStatus.GameError, PlaybackReasons.Exception, null, null, string.Empty));
+            summary.Scripts.Add(new PlaybackSummaryRow("<batch>", PlaybackStatus.GameError, PlaybackReasons.Exception, null, null, string.Empty, false));
         }
         finally
         {
@@ -101,7 +109,10 @@ internal static class PlaybackService
         }
     }
 
-    private static async Task<PlaybackReport> RunScriptAsync(string scriptPath, CancellationToken cancellation)
+    private static async Task<PlaybackReport> RunScriptAsync(
+        string scriptPath,
+        bool handoffWhenDone,
+        CancellationToken cancellation)
     {
         PlaybackReport report = new() { Script = scriptPath };
         PreflightResult preflight = ScriptPreflight.Run(scriptPath);
@@ -129,6 +140,7 @@ internal static class PlaybackService
 
         report.DecisionsTotal = preflight.Script!.Decisions.Count;
         bool runStarted = false;
+        bool handedOff = false;
         try
         {
             await PlaybackRunStarter.StartAsync(preflight, cancellation);
@@ -144,8 +156,27 @@ internal static class PlaybackService
                 preflight.Script,
                 report,
                 TimeSpan.FromSeconds(RecorderService.Config.PlaybackTimeoutSeconds),
-                cancellation);
+                cancellation,
+                waitForIdleAfterCompletion: !handoffWhenDone);
             await driver.RunAsync();
+
+            if (handoffWhenDone && report.Status == PlaybackStatus.Completed)
+            {
+                if (RunManager.Instance.IsInProgress && RecorderService.IsRecording)
+                {
+                    handedOff = true;
+                    report.HandedOff = true;
+                    report.Message = $"all {report.DecisionsCompleted} decisions settled; control handed to the player with recording still active";
+                    GD.Print($"[STS2PGN] Playback: control handed off after {report.DecisionsCompleted} decisions; recording continues at {report.RecordingPath}");
+                }
+                else
+                {
+                    report.Stop(
+                        PlaybackStatus.GameError,
+                        PlaybackReasons.Precondition,
+                        "handoff was requested, but the script did not leave an active recorded run");
+                }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -161,7 +192,7 @@ internal static class PlaybackService
         }
         finally
         {
-            if (runStarted)
+            if (runStarted && !handedOff)
             {
                 try
                 {
@@ -173,8 +204,11 @@ internal static class PlaybackService
                 }
             }
 
-            RecorderService.ExecuteSafely("capturing live unlocks after playback", () =>
-                report.UnlocksAfterRun = PlaybackUnlocks.From(ScriptPreflight.CurrentLiveUnlocks()));
+            if (!handedOff)
+            {
+                RecorderService.ExecuteSafely("capturing live unlocks after playback", () =>
+                    report.UnlocksAfterRun = PlaybackUnlocks.From(ScriptPreflight.CurrentLiveUnlocks()));
+            }
         }
 
         return report;

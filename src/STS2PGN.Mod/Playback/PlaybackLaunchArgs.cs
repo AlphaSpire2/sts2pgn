@@ -7,7 +7,10 @@ namespace STS2PGN.Mod.Playback;
 /// (every <c>*.sts2pgn</c> in ordinal filename order), or a <c>.txt</c> list with one path per
 /// line (<c>#</c> starts a comment; relative entries resolve against the list file).
 /// </summary>
-internal sealed record PlaybackLaunchArgs(IReadOnlyList<string> ScriptPaths, bool QuitWhenDone)
+internal sealed record PlaybackLaunchArgs(
+    IReadOnlyList<string> ScriptPaths,
+    bool QuitWhenDone,
+    bool HandoffWhenDone)
 {
     public const string CommandLineKey = "sts2pgn-script";
 
@@ -25,10 +28,19 @@ internal sealed record PlaybackLaunchArgs(IReadOnlyList<string> ScriptPaths, boo
             throw new ArgumentException($"--{CommandLineKey} requires a script file, directory, or list path.");
         }
 
-        return new PlaybackLaunchArgs(Expand(value), QuitWhenDone: true);
+        return new PlaybackLaunchArgs(Expand(value), QuitWhenDone: true, HandoffWhenDone: false);
     }
 
-    public static PlaybackLaunchArgs FromConsole(string path) => new(Expand(path), QuitWhenDone: false);
+    public static PlaybackLaunchArgs FromConsole(string path, bool handoffWhenDone = false)
+    {
+        IReadOnlyList<string> scripts = Expand(path);
+        if (handoffWhenDone && scripts.Count != 1)
+        {
+            throw new ArgumentException("handoff requires exactly one script file");
+        }
+
+        return new PlaybackLaunchArgs(scripts, QuitWhenDone: false, HandoffWhenDone: handoffWhenDone);
+    }
 
     public static IReadOnlyList<string> Expand(string path)
     {

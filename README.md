@@ -168,7 +168,23 @@ recorder records the session as a normal authoritative recording:
 "Slay the Spire 2" --sts2pgn-script="C:\scripts\batch"
 ```
 
-or, from the in-game dev console, `sts2pgn drive <path>` (never quits).
+or, from the in-game dev console, `sts2pgn drive <path>` (never quits). To drive a
+single partial script and then continue the same run manually, use:
+
+```text
+sts2pgn handoff <partial-script.sts2pgn>
+```
+
+After the partial script's last decision settles, the driver detaches and leaves the
+run, save, and recorder active. Every manual action afterward is appended to the same
+authoritative recording through the normal recorder path. Handoff accepts exactly one
+script and reports `handed_off: true`; it is successful only if the script leaves an
+active recorded run. A handoff report omits `unlocks_after_run` because the run has not
+ended. `sts2pgn cancel` aborts and abandons playback—it is not a handoff.
+
+For a takeover at Crystal Sphere, convert a known recording with `to-script`, remove
+the decisions after the desired boundary (for example, the `map.choose` that enters its
+node), validate the partial script, then run `sts2pgn handoff` on it.
 
 For every script the driver first checks the game build (`GameVersion`, `GameCommit`,
 `ModelIdHash`), the character, the ascension, and the live profile's unlock state and
@@ -182,9 +198,10 @@ settle it. A mismatch stops the script at that record with the expected and offe
 
 Reports go to the recorder's output directory: `<script>.playback.json` per script
 (`completed`, `refused_at_start`, `stopped_at_record`, or `game_error`, with the record,
-expected/offered values, the recording path, and the profile's unlock state after the
-run) and `playback-summary.json` for the batch. The process exit code is `0` when every
-script completed, otherwise `3` (stopped at a record), `4` (refused), or `5` (game error).
+expected/offered values, recording path, the `handed_off` flag, and the profile's unlock
+state after a run that playback itself ends) and `playback-summary.json` for the batch.
+The process exit code is `0` when every script completed, otherwise `3` (stopped at a
+record), `4` (refused), or `5` (game error).
 Details are in [docs/replay-contract.md](docs/replay-contract.md).
 
 ## Core library usage

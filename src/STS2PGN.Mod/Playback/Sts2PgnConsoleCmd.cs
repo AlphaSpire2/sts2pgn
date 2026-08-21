@@ -5,8 +5,9 @@ using MegaCrit.Sts2.Core.Entities.Players;
 namespace STS2PGN.Mod.Playback;
 
 /// <summary>
-/// Dev-console entry point: <c>sts2pgn drive &lt;file|dir|list.txt&gt;</c> runs a playback batch
-/// interactively (never quits the game); <c>sts2pgn cancel</c> stops it. Discovered by the game's
+/// Dev-console entry point: <c>sts2pgn drive &lt;file|dir|list.txt&gt;</c> runs a playback batch;
+/// <c>sts2pgn handoff &lt;file&gt;</c> drives one partial script and leaves its run under player control;
+/// <c>sts2pgn cancel</c> stops and abandons an active playback. Discovered by the game's
 /// <c>ReflectionHelper.GetSubtypesInMods</c>, so it must be public with a parameterless constructor,
 /// and the command name must be lowercase.
 /// </summary>
@@ -14,9 +15,9 @@ public sealed class Sts2PgnConsoleCmd : AbstractConsoleCmd
 {
     public override string CmdName => "sts2pgn";
 
-    public override string Args => "drive <file|dir|list.txt> | cancel";
+    public override string Args => "drive <file|dir|list.txt> | handoff <file> | cancel";
 
-    public override string Description => "Drive STS2PGN decision scripts in the real game while recording.";
+    public override string Description => "Drive STS2PGN scripts while recording, optionally handing the run to the player.";
 
     public override bool IsNetworked => false;
 
@@ -32,22 +33,10 @@ public sealed class Sts2PgnConsoleCmd : AbstractConsoleCmd
         switch (args[0].ToLowerInvariant())
         {
             case "drive":
-                if (args.Length < 2)
-                {
-                    return new CmdResult(success: false, "drive requires a script file, directory, or list path");
-                }
+                return Start(args, handoffWhenDone: false);
 
-                try
-                {
-                    PlaybackLaunchArgs launch = PlaybackLaunchArgs.FromConsole(string.Join(' ', args.Skip(1)));
-                    return PlaybackService.TryStart(launch, out string error)
-                        ? new CmdResult(success: true, $"driving {launch.ScriptPaths.Count} script(s); reports go to the recorder output directory")
-                        : new CmdResult(success: false, error);
-                }
-                catch (Exception exception) when (exception is IOException or ArgumentException)
-                {
-                    return new CmdResult(success: false, exception.Message);
-                }
+            case "handoff":
+                return Start(args, handoffWhenDone: true);
 
             case "cancel":
                 if (!PlaybackService.IsActive)
@@ -60,6 +49,36 @@ public sealed class Sts2PgnConsoleCmd : AbstractConsoleCmd
 
             default:
                 return new CmdResult(success: false, $"unknown subcommand '{args[0]}'; usage: {CmdName} {Args}");
+        }
+    }
+
+    private static CmdResult Start(string[] args, bool handoffWhenDone)
+    {
+        string verb = handoffWhenDone ? "handoff" : "drive";
+        if (args.Length < 2)
+        {
+            return new CmdResult(
+                success: false,
+                handoffWhenDone
+                    ? "handoff requires one script file"
+                    : "drive requires a script file, directory, or list path");
+        }
+
+        try
+        {
+            PlaybackLaunchArgs launch = PlaybackLaunchArgs.FromConsole(
+                string.Join(' ', args.Skip(1)),
+                handoffWhenDone);
+            string started = handoffWhenDone
+                ? "driving one script; control will be handed off after its last decision settles"
+                : $"driving {launch.ScriptPaths.Count} script(s)";
+            return PlaybackService.TryStart(launch, out string error)
+                ? new CmdResult(success: true, $"{started}; reports go to the recorder output directory")
+                : new CmdResult(success: false, error);
+        }
+        catch (Exception exception) when (exception is IOException or ArgumentException)
+        {
+            return new CmdResult(success: false, $"{verb}: {exception.Message}");
         }
     }
 }

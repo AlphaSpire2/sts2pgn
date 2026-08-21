@@ -49,6 +49,7 @@ internal sealed class PlaybackDriver
     private readonly PlaybackReport _report;
     private readonly TimeSpan _timeout;
     private readonly CancellationToken _cancellation;
+    private readonly bool _waitForIdleAfterCompletion;
     private readonly object _gate = new();
     // Arrival ticks order recorder events. Settling is "a completion boundary arrived after
     // this decision was recorded": some observations (turn boundaries, end-turn flushes)
@@ -58,12 +59,18 @@ internal sealed class PlaybackDriver
     private long _tick;
     private DateTime _lastOfferAt = DateTime.MinValue;
 
-    public PlaybackDriver(DecisionScript script, PlaybackReport report, TimeSpan timeout, CancellationToken cancellation)
+    public PlaybackDriver(
+        DecisionScript script,
+        PlaybackReport report,
+        TimeSpan timeout,
+        CancellationToken cancellation,
+        bool waitForIdleAfterCompletion = true)
     {
         _script = script;
         _report = report;
         _timeout = timeout;
         _cancellation = cancellation;
+        _waitForIdleAfterCompletion = waitForIdleAfterCompletion;
     }
 
     public async Task RunAsync()
@@ -86,7 +93,11 @@ internal sealed class PlaybackDriver
                 _report.DecisionsCompleted++;
             }
 
-            await PlaybackWait.TryUntilAsync(() => LiveGame.IsIdle || !RecorderService.IsRecording, _timeout, _cancellation);
+            if (_waitForIdleAfterCompletion)
+            {
+                await PlaybackWait.TryUntilAsync(() => LiveGame.IsIdle || !RecorderService.IsRecording, _timeout, _cancellation);
+            }
+
             _report.Status = PlaybackStatus.Completed;
             _report.Reason = null;
             _report.Message = $"all {_script.Decisions.Count} decisions settled";
