@@ -22,6 +22,7 @@ public static class Program
             {
                 "validate" => ValidateCommand.Run(rest),
                 "summarize" => SummarizeCommand.Run(rest),
+                "to-script" => ToScriptCommand.Run(rest),
                 _ => UnknownCommand(command),
             };
         }
@@ -46,6 +47,8 @@ public static class Program
         writer.WriteLine("Commands:");
         writer.WriteLine("  validate <file>...   Parse and validate traces; non-zero exit on any error.");
         writer.WriteLine("  summarize <file>...  Print headers, record statistics, and run shape.");
+        writer.WriteLine("  to-script <file> --producer name/version [--out path]");
+        writer.WriteLine("                       Convert a recording into a decision script for the playback driver.");
         writer.WriteLine();
         writer.WriteLine("Options:");
         writer.WriteLine("  --no-recover   Treat a truncated unterminated final line as a parse error.");
