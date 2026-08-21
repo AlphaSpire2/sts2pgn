@@ -657,6 +657,15 @@ public static class Sts2PgnValidator
                 issues);
         }
 
+        if (observationContext == "run.resume" && afterSequence.HasValue && hasValidState)
+        {
+            ValidateRunResumeProjection(
+                entry,
+                entriesBySequence[afterSequence.Value],
+                state,
+                issues);
+        }
+
 
         if (hasValidState
             && state.TryGetProperty("scope", out JsonElement scope)
@@ -753,6 +762,75 @@ public static class Sts2PgnValidator
                 issues,
                 "invalid_run_start_projection",
                 "run.start state does not match projection version 1 scope run_start.core.",
+                location);
+        }
+    }
+
+    private static void ValidateRunResumeProjection(
+        RunRecordEntry observation,
+        RunRecordEntry observedEntry,
+        JsonElement state,
+        List<ValidationIssue> issues)
+    {
+        string location = $"sequence:{observation.Sequence}";
+        if (observedEntry.Kind != "run.resume")
+        {
+            AddError(
+                issues,
+                "invalid_run_resume_observation",
+                "A run.resume observation must reference the run.resume record.",
+                location);
+            return;
+        }
+
+        if (observation.Sequence != observedEntry.Sequence + 1)
+        {
+            AddError(
+                issues,
+                "invalid_run_resume_observation",
+                "The run.resume observation must immediately follow run.resume.",
+                location);
+        }
+
+        if (!TryGetData(observedEntry, out JsonElement resumeData)
+            || !resumeData.TryGetProperty("state", out JsonElement embeddedState)
+            || embeddedState.ValueKind != JsonValueKind.Object)
+        {
+            AddError(
+                issues,
+                "missing_run_resume_projection",
+                "run.resume requires data.state when followed by a run.resume observation.",
+                $"sequence:{observedEntry.Sequence}");
+        }
+        else
+        {
+            try
+            {
+                if (!string.Equals(
+                    CanonicalJson.Serialize(embeddedState),
+                    CanonicalJson.Serialize(state),
+                    StringComparison.Ordinal))
+                {
+                    AddError(
+                        issues,
+                        "run_resume_projection_mismatch",
+                        "The run.resume embedded state and its authoritative observation differ.",
+                        location);
+                }
+            }
+            catch (ArgumentException exception)
+            {
+                AddError(issues, "uncanonicalizable_run_resume", exception.Message, location);
+            }
+        }
+
+        if (!HasNonEmptyString(state, "scope")
+            || state.GetProperty("scope").GetString() != "run.core")
+        {
+            AddError(
+                issues,
+                "invalid_run_resume_projection",
+                "run.resume state must use projection version 1 scope run.core.",
                 location);
         }
     }

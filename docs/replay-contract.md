@@ -48,6 +48,10 @@ verify supported format/projection versions
 initialize simulator from run.start portable state
 
 for each subsequent record:
+    if record is run.resume:
+        discard simulated state
+        re-initialize from the run.resume portable state
+
     if record is an initiating action or nested choice:
         verify expected location and object fingerprints
         apply the action
@@ -75,15 +79,15 @@ comparison, result comparison, and first-failure reporting. The adapter owns onl
 simulator-specific behavior:
 
 1. `CheckCompatibilityAsync` declares whether the simulator supports the trace metadata.
-2. `InitializeAsync` reconstructs simulator state from the complete `run.start` record.
+2. `InitializeAsync` reconstructs simulator state from the complete `run.start` record. It is called again for every `run.resume` record, where the adapter must discard its current state and re-anchor on the resumed portable state.
 3. `ConsumeAsync` applies or verifies each later action, lifecycle, and resolution record and settles its automatic effects.
 4. `CaptureStateAsync` returns the simulator's normalized state for an observation request.
 5. `GetResultAsync` returns the simulator's terminal result.
 
 Every record is preserved by `ReplayTimeline`. It assigns one processing role without
-changing the original kind or payload: initialization, action, resolution, lifecycle,
-observation, or terminal. Unknown future kinds default to actions so adapters can either
-implement them or reject them explicitly.
+changing the original kind or payload: initialization, reinitialization, action,
+resolution, lifecycle, observation, or terminal. Unknown future kinds default to actions
+so adapters can either implement them or reject them explicitly.
 
 `run.finish` is never passed to `ConsumeAsync`. It is an expected outcome, so the engine
 asks the adapter for its independently derived result and compares the two. This keeps the
@@ -100,6 +104,32 @@ Arrays are ordered unless a projection rule gives them a stable key. The default
 paths are `/players` by `slot` and `/combat/creatures` by `combat_id`. Differences use
 JSON Pointer paths, preserve the distinction between a missing value and JSON `null`,
 and are capped by `ReplayEngineOptions.MaximumDifferences`.
+
+## Save/resume boundaries
+
+STS2 serializes no mid-room state: its last checkpoint is written either when a map
+point is entered (before the room's content is rolled) or when a room pre-finishes with
+unclaimed rewards. Resuming therefore legally rewinds the run — a player who quits
+mid-combat resumes that room from its beginning, and decisions the recorder faithfully
+captured after the checkpoint never happened in the resumed timeline.
+
+A `run.resume` record marks that boundary inside the same trace file. It is a
+re-anchoring record, not an action:
+
+- Its `data` carries the restored save (`source_snapshot`), the portable live state
+  after the game finished restoring (`state`, scope `run.core`), the reload count, and
+  the recording mod version. The next `state.observe` (context `run.resume`) duplicates
+  `data.state` with its canonical digest, exactly like the `run.start` pattern.
+- A consumer must discard its simulated state at `run.resume` and re-initialize from the
+  record's payload, then continue consuming subsequent records normally. It must not
+  treat pre-resume observations as comparable to post-resume state.
+- Decisions between the last checkpoint and the resume remain in the trace as a faithful
+  record of the abandoned tail. Divergence detection within that tail still works
+  through its own observations; comparisons after the resume start from the re-anchored
+  state.
+- A mismatch between the simulator's re-anchored state and later observations is still a
+  divergence. The re-anchor is initialization input, not a repair channel: the engine
+  passes it through `InitializeAsync`, never through an observation comparison.
 
 ## Settled-state boundary
 

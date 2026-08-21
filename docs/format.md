@@ -64,6 +64,7 @@ Keys match `[A-Za-z][A-Za-z0-9_]*`. Within values, `\"`, `\\`, `\n`, `\r`, and `
 | Tag | Meaning |
 |---|---|
 | `Platform` | Platform identifier reported by the game. |
+| `GameStartTime` | STS2's own run key: `SerializableRun.StartTime` unix seconds, stable across save/resume. Used to find the incomplete trace of a resumed run. |
 | `GameSaveSchema` | Initial `SerializableRun` schema version. |
 | `Mods` | Compact JSON array of loaded mod IDs, versions, and gameplay flags. |
 | `DailyTime` | Daily-run date/time when applicable. |
@@ -147,6 +148,51 @@ The portable projection is authoritative for cross-implementation comparison. A 
 
 Secrets, platform account identifiers, and unnecessary profile history must not be included. Player identifiers are anonymized to run slots.
 
+## Save and resume
+
+A save-and-quit leaves an incomplete trace: `Result` header `*` and no terminal result
+line. When the same run is continued, the recorder locates that trace — matching
+`GameStartTime`, `Seed`, `Mode`, `Ascension`, `Players`, and the exact game
+version/commit/model hash, with `Result` still `*` — and appends to it instead of
+starting a new file:
+
+- If the previous session crashed mid-write, the recorder first removes the truncated
+  unterminated final line, restoring the durable prefix that ends in exactly one
+  newline. Complete records are never removed.
+- Sequence numbering continues from the last complete record.
+- The first appended record is `run.resume`, immediately followed by a `state.observe`
+  with context `run.resume`.
+
+`run.resume` is a re-anchoring boundary, not a player action. STS2 saves no mid-room
+state, so resuming rewinds the run to its last checkpoint: decisions recorded after that
+checkpoint remain in the trace but never happened in the resumed timeline. A consumer
+must discard its simulated state at `run.resume` and re-initialize from the record's
+payload, exactly as it initializes from `run.start`:
+
+```json
+{
+  "data": {
+    "reloads": 1,
+    "recorder_version": "0.7.0",
+    "restored_pre_finished_room": false,
+    "source_snapshot": { "schema_version": 16, "encoding": "sts2-save-json", "data": {} },
+    "state": { "scope": "run.core" }
+  }
+}
+```
+
+- `source_snapshot` is the exact `SerializableRun` the game restored, for in-game replay.
+- `state` is the portable live projection (scope `run.core`) after the game finished
+  restoring; the following observation duplicates it with its canonical digest, mirroring
+  the `run.start` pattern.
+- `reloads` counts the run's resumes including this one; `restored_pre_finished_room`
+  records whether the checkpoint carried a pre-finished room with unclaimed rewards.
+
+When no matching incomplete trace can be found or safely continued (missing file,
+malformed record, changed game build or model hash), the recorder falls back to a new
+trace file: a normal `run.start` built from the restored state, followed by the same
+`run.resume` record marking the run as continued.
+
 ## Action namespaces
 
 Version 1 reserves these namespaces:
@@ -204,9 +250,9 @@ A `state.observe` record describes authoritative state after the real game has s
 - `projection_version` versions the state schema independently of the file grammar.
 - `state` is the complete projection for its declared scope.
 
-Recorder 0.6.0 generates full observations after settled actions and at run start, map generation, room/act boundaries, combat turn boundaries, choice/reward/rest/shop boundaries, and run end.
+Recorder 0.6.0 and later generate full observations after settled actions and at run start, run resume, map generation, room/act boundaries, combat turn boundaries, choice/reward/rest/shop boundaries, and run end.
 
-The core library validates the observation envelope (`after`, `context`, `digest`, `projection_version`, and object-valued `state`) and verifies that the digest matches the canonical state. For `context = run.start`, it also requires the observation to reference `run.start`, match `run.start.data.state`, and conform to the `run_start.core` schema.
+The core library validates the observation envelope (`after`, `context`, `digest`, `projection_version`, and object-valued `state`) and verifies that the digest matches the canonical state. For `context = run.start`, it also requires the observation to reference `run.start`, match `run.start.data.state`, and conform to the `run_start.core` schema. For `context = run.resume`, it requires the observation to immediately follow and reference a `run.resume` record, match `run.resume.data.state`, and use scope `run.core`.
 
 ### Projection version 1: `run_start.core`
 
@@ -298,7 +344,7 @@ Every post-start observation emitted by the recorder uses `scope = "run.core"` a
 
 Arrays with semantic identity are compared by key: `acts/index`, `players/slot`, `rooms/stack_depth`, `choices.player_choices/id`, `choices.rewards/id`, `run.map.points/id`, `combat.players/slot`, and `combat.creatures/combat_id`. All other arrays preserve gameplay order.
 
-Recorder contexts currently include `map.generated`, `choice.offered`, `action.settled`, `room.enter`, `room.exit`, `act.enter`, `combat.player_turn.start`, `combat.enemy_turn.start`, `combat.turn.end`, event/Crystal Sphere contexts, reward/rest/shop settled contexts, and `run.end`. The `after` field always references an earlier decision or lifecycle record; when an action contains a nested synchronized choice, it references the latest nested decision.
+Recorder contexts currently include `run.resume`, `map.generated`, `choice.offered`, `action.settled`, `room.enter`, `room.exit`, `act.enter`, `combat.player_turn.start`, `combat.enemy_turn.start`, `combat.turn.end`, event/Crystal Sphere contexts, reward/rest/shop settled contexts, and `run.end`. The `after` field always references an earlier decision or lifecycle record; when an action contains a nested synchronized choice, it references the latest nested decision.
 
 ## Canonical JSON and hashing
 

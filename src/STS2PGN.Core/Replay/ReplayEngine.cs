@@ -114,6 +114,30 @@ public sealed class ReplayEngine
                 continue;
             }
 
+            if (step.Role == ReplayRecordRole.Reinitialization)
+            {
+                // The real game rewound to its last save checkpoint here, so decisions
+                // between that checkpoint and the resume never happened in the resumed
+                // timeline. The simulator discards its state and re-anchors on the
+                // run.resume payload instead of consuming it as an action.
+                ReplayConsumeResult reinitialization = await simulator.InitializeAsync(
+                    record.Metadata,
+                    step,
+                    cancellationToken);
+                if (!reinitialization.Accepted)
+                {
+                    return Failure(
+                        record,
+                        ReplayFailureKind.IllegalAction,
+                        step.Sequence,
+                        reinitialization.Message ?? "The simulator rejected run.resume re-initialization.",
+                        null,
+                        lastMatchingObservation);
+                }
+
+                continue;
+            }
+
             ReplayConsumeResult consumed = await simulator.ConsumeAsync(step, cancellationToken);
             if (!consumed.Accepted)
             {

@@ -13,6 +13,11 @@ public interface IReplaySimulatorAdapter
         RunMetadata metadata,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Builds simulator state from an anchoring record's payload. Called once for
+    /// run.start, and again for every run.resume record, where the simulator must
+    /// discard its current state and re-anchor on the resumed snapshot.
+    /// </summary>
     ValueTask<ReplayConsumeResult> InitializeAsync(
         RunMetadata metadata,
         ReplayStep runStart,

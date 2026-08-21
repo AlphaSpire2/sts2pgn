@@ -71,7 +71,8 @@ internal static class RunCleanupPatch
 internal static class RunResumePatch
 {
     [HarmonyPrefix]
-    private static void Prefix() => RecorderService.MarkNextRunAsResume();
+    private static void Prefix(MegaCrit.Sts2.Core.Saves.SerializableRun save) =>
+        RecorderService.MarkNextRunAsResume(save);
 }
 
 [HarmonyPatch(typeof(EventSynchronizer), nameof(EventSynchronizer.ChooseLocalOption))]
