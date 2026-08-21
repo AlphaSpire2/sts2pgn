@@ -1,4 +1,4 @@
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.12.35527.113
 MinimumVisualStudioVersion = 10.0.40219.1
@@ -7,6 +7,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "STS2PGN.Mod", "src\STS2PGN.Mod\STS2PGN.Mod.csproj", "{B68AF522-D51A-4EC2-A17E-013D8F5D7206}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "STS2PGN.Core.Tests", "tests\STS2PGN.Core.Tests\STS2PGN.Core.Tests.csproj", "{846288F1-46EF-4143-921A-DFA8E5B50C5C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{C67570D5-14FE-417A-AC59-D68CB2C68CD8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "STS2PGN.Tool", "src\STS2PGN.Tool\STS2PGN.Tool.csproj", "{776C4E26-C2BA-41C4-B27E-A804FDE1426D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -26,5 +30,12 @@ Global
 		{846288F1-46EF-4143-921A-DFA8E5B50C5C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{846288F1-46EF-4143-921A-DFA8E5B50C5C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{846288F1-46EF-4143-921A-DFA8E5B50C5C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{776C4E26-C2BA-41C4-B27E-A804FDE1426D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{776C4E26-C2BA-41C4-B27E-A804FDE1426D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{776C4E26-C2BA-41C4-B27E-A804FDE1426D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{776C4E26-C2BA-41C4-B27E-A804FDE1426D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{776C4E26-C2BA-41C4-B27E-A804FDE1426D} = {C67570D5-14FE-417A-AC59-D68CB2C68CD8}
 	EndGlobalSection
 EndGlobal

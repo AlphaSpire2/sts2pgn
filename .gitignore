@@ -17,3 +17,6 @@ TestResults/
 
 # The decompile is a read-only local reference, not project source.
 /decomp
+
+# Recorded run traces are regenerable acceptance artifacts, not source.
+*.sts2pgn
