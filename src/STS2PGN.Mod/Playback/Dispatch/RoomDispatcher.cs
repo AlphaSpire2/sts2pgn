@@ -38,6 +38,32 @@ internal sealed class RoomDispatcher : IDecisionDispatcher
         }
     }
 
+    /// <summary>
+    /// Opening the merchant's inventory is presentation-only (the recorder writes nothing until a
+    /// purchase is accepted), so a script goes from room entry straight to shop.purchase /
+    /// shop.remove_card. Click the merchant the way a player would (<c>NMerchantButton</c> →
+    /// <c>MerchantOpened</c> → <c>NMerchantRoom.OpenInventory</c>).
+    /// </summary>
+    public bool TryAdvanceSurface(ScriptDecision decision)
+    {
+        if (decision.Kind is not ("shop.purchase" or "shop.remove_card")
+            || LiveGame.TopOverlay is not null
+            || NMerchantRoom.Instance is not { } room
+            || room.Inventory is { IsOpen: true })
+        {
+            return false;
+        }
+
+        if (LiveGame.IsUsable(room.MerchantButton))
+        {
+            room.MerchantButton.ForceClick();
+            return true;
+        }
+
+        room.OpenInventory();
+        return true;
+    }
+
     public VerifyResult Verify(ScriptDecision decision) => decision.Kind switch
     {
         "event.choose" => VerifyEventChoice(decision),
