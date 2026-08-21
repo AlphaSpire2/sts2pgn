@@ -105,6 +105,12 @@ internal static class PlaybackService
     {
         PlaybackReport report = new() { Script = scriptPath };
         PreflightResult preflight = ScriptPreflight.Run(scriptPath);
+        report.ConvertedFromRecording = preflight.ConvertedFromRecording;
+        if (preflight.ConvertedFromRecording)
+        {
+            GD.Print($"[STS2PGN] Playback: {Path.GetFileName(scriptPath)} is a recording; replaying its decisions as a script");
+        }
+
         if (!preflight.Passed)
         {
             report.PreconditionFailures.AddRange(preflight.Failures);

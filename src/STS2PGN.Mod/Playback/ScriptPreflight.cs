@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Unlocks;
 using STS2PGN.Mod.Recording;
+using STS2PGN.Model;
 using STS2PGN.Parsing;
 using STS2PGN.Scripting;
 using STS2PGN.Validation;
@@ -17,6 +18,9 @@ namespace STS2PGN.Mod.Playback;
 internal sealed class PreflightResult
 {
     public DecisionScript? Script { get; init; }
+
+    /// <summary>True when the input was an authoritative recording converted to a script at load time.</summary>
+    public bool ConvertedFromRecording { get; init; }
     public CharacterModel? Character { get; init; }
     public IReadOnlyList<ActModel>? Acts { get; init; }
     public List<string> Failures { get; } = [];
@@ -32,12 +36,26 @@ internal static class ScriptPreflight
     public static PreflightResult Run(string scriptPath)
     {
         DecisionScript script;
+        bool converted = false;
         try
         {
-            using StreamReader reader = new(scriptPath);
-            script = DecisionScript.Load(reader, new Sts2PgnParseOptions { RecoverTruncatedFinalLine = false });
+            RunRecord record;
+            using (StreamReader reader = new(scriptPath))
+            {
+                record = Sts2PgnParser.Parse(reader, new Sts2PgnParseOptions { RecoverTruncatedFinalLine = false });
+            }
+
+            if (!ScriptProfile.IsScript(record.Metadata))
+            {
+                // A recording was given: replay its decisions. The conversion is the same one
+                // `sts2pgn to-script` performs, so the same recording yields the same script.
+                record = ScriptConverter.FromRecording(record, $"sts2pgn-playback/{STS2PgnMod.Version}");
+                converted = true;
+            }
+
+            script = DecisionScript.FromRecord(record);
         }
-        catch (Exception exception) when (exception is IOException or Sts2PgnParseException or Sts2PgnValidationException)
+        catch (Exception exception) when (exception is IOException or Sts2PgnParseException or Sts2PgnValidationException or ArgumentException)
         {
             PreflightResult failed = new();
             failed.Failures.Add($"{PlaybackReasons.Validation}: {exception.Message}");
@@ -90,7 +108,7 @@ internal static class ScriptPreflight
 
         IReadOnlyList<ActModel>? acts = ResolveActs(script, identity.Seed, liveUnlockState, failures);
 
-        PreflightResult result = new() { Script = script, Character = character, Acts = acts };
+        PreflightResult result = new() { Script = script, Character = character, Acts = acts, ConvertedFromRecording = converted };
         result.Failures.AddRange(failures);
         return result;
     }
