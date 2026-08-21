@@ -404,7 +404,7 @@ Comparison rules for this scope are:
 - `players` is keyed by `slot`, although its wire representation preserves run order.
 - Decks, relics, potion slots, visited map coordinates, modifiers, and each relic grab-bag list are ordered.
 - RNG counter objects are keyed by their symbolic counter name and compared exactly.
-- `unlocks` is the profile state the run was created with: `epochs` (revealed epoch IDs) and `encounters_seen` (encounter model IDs) are sets serialized in ordinally sorted order; `number_of_runs` is the profile's completed-run count and compares exactly.
+- `unlocks` is the profile state the run was created with: `epochs` (revealed epoch IDs) and `encounters_seen` (encounter model IDs) are sets serialized in ordinally sorted order; `number_of_runs` is the profile's completed-run count; the game only distinguishes `0` (first run) from any positive value, so the playback driver compares it that way while recordings still carry the exact count.
 - Card, relic, enchantment, and modifier saved properties are name-sorted portable objects.
 - Odds are exact STS2 single-precision values encoded as canonical JSON numbers.
 - `rooms` and choice collections are explicitly empty and `combat` is `null` at a new-run boundary.
