@@ -21,9 +21,21 @@ internal sealed class MapDispatcher : IDecisionDispatcher
     public bool IsReady(ScriptDecision decision) => decision.Kind switch
     {
         "map.choose" => NMapScreen.Instance is { IsOpen: true } screen && TravelablePoints(screen).Count > 0,
-        "room.proceed" or "act.next" => LiveGame.TopOverlay is NRewardsScreen,
+        "room.proceed" => LiveGame.TopOverlay is NRewardsScreen || TreasureProceedButton() is not null,
+        "act.next" => LiveGame.TopOverlay is NRewardsScreen,
         _ => false,
     };
+
+    /// <summary>
+    /// The treasure room records room.proceed from its own Proceed button (no rewards screen):
+    /// enabled with the Proceed label once relic picking has finished, Skip-labelled while it is
+    /// still open (that click would be treasure.skip_relic instead).
+    /// </summary>
+    private static NProceedButton? TreasureProceedButton()
+    {
+        NProceedButton? button = NRun.Instance?.TreasureRoom?.ProceedButton;
+        return LiveGame.TopOverlay is null && LiveGame.IsUsable(button) && !button!.IsSkip ? button : null;
+    }
 
     public bool SettlesByObservation(ScriptDecision decision) => decision.Kind != "room.proceed";
 
@@ -135,7 +147,15 @@ internal sealed class MapDispatcher : IDecisionDispatcher
                 screen.OnMapPointSelectedLocally(FindPoint(TravelablePoints(screen), decision)!);
                 break;
             case "room.proceed":
-                _ = RunManager.Instance.ProceedFromTerminalRewardsScreen();
+                if (TreasureProceedButton() is { } treasureProceed)
+                {
+                    treasureProceed.ForceClick();
+                }
+                else
+                {
+                    _ = RunManager.Instance.ProceedFromTerminalRewardsScreen();
+                }
+
                 break;
             case "act.next":
                 RunManager.Instance.ActChangeSynchronizer.SetLocalPlayerReady();
