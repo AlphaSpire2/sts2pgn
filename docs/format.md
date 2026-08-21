@@ -240,9 +240,13 @@ Records:
   targets, and every positional index accompanied by its fingerprint
   (`script_missing_identity`). Drivable kinds are `act.next`, `choice.cards`,
   `choice.index`, `combat.discard_potion`, `combat.end_turn`, `combat.play_card`,
-  `combat.use_potion`, `event.advance`, `event.choose`, `map.choose`, `rest.choose`,
-  `reward.claim`, `reward.skip`, `room.proceed`, `shop.purchase`, `shop.remove_card`,
-  `treasure.choose_relic`, and `treasure.skip_relic`.
+  `combat.use_potion`, `event.advance`, `event.choose`, `event.crystal_sphere.click`,
+  `event.crystal_sphere.proceed`, `event.crystal_sphere.set_tool`, `map.choose`,
+  `rest.choose`, `reward.claim`, `reward.skip`, `room.proceed`, `shop.purchase`,
+  `shop.remove_card`, `treasure.choose_relic`, and `treasure.skip_relic`. Crystal
+  Sphere clicks carry their complete deterministic identity as
+  `{x, y, tool, remaining_before}`; a driver selects the carried tool before clicking,
+  so producers may omit redundant `set_tool` records.
 - `choice.*` records must carry the offered options the producer expects (`offered` with
   `context` and `options` on `choice.index`, `script_choice_missing_offer`; a
   fingerprint plus `deck_index`/`combat_card_index` on every `choice.cards` entry,
@@ -256,11 +260,11 @@ Records:
   site, shop, or treasure room is presentation-only and never recorded.
 - `event.advance` is one record per dialogue page, as the recorder emits it.
 - Outcome records are allowed but ignored with a warning (`script_ignored_record`):
-  `state.observe`, `*.resolve`, `act.enter`, `room.enter`, `room.exit`.
+  `state.observe`, `*.resolve`, `act.enter`, `room.enter`, `room.exit`, and
+  `event.crystal_sphere.start`. The generated board is an observation, not simulator input.
 - Kinds without drivable identity are rejected (`script_unsupported_record`):
   `run.finish`, `run.resume`, `choice.player`, `choice.unknown`, `game.unknown_action`,
-  `combat.undo_end_turn`, and `event.crystal_sphere.*` (the Crystal Sphere grid is
-  generated at run time, so it cannot be scripted).
+  and `combat.undo_end_turn`.
 - `set_id` on reward records is the run's deterministic per-run counter and must match
   the live game; the driver never remaps indexes, set IDs, or options.
 

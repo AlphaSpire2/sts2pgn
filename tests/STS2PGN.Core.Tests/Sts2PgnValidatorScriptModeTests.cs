@@ -151,6 +151,40 @@ public sealed class Sts2PgnValidatorScriptModeTests
     }
 
     [Fact]
+    public void ScriptModeAcceptsCrystalSphereDecisionsAndIgnoresStart()
+    {
+        RunRecord record = TestRecordFactory.CreateScriptBuilder()
+            .AppendJson("run.start", TestRecordFactory.ScriptRunStart)
+            .AppendJson("event.crystal_sphere.start", "{\"actor\":\"p0\",\"data\":{\"grid\":{}}}")
+            .AppendJson("event.crystal_sphere.set_tool", "{\"actor\":\"p0\",\"data\":{\"tool\":\"small\"}}")
+            .AppendJson("event.crystal_sphere.click", "{\"actor\":\"p0\",\"data\":{\"x\":3,\"y\":7,\"tool\":\"small\",\"remaining_before\":4}}")
+            .AppendJson("event.crystal_sphere.proceed", "{\"actor\":\"p0\",\"data\":{}}")
+            .Build();
+
+        Sts2PgnValidationResult result = ValidateScript(record);
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(issue => issue.Code)));
+        Assert.Contains(result.Warnings, issue => issue.Code == "script_ignored_record" && issue.Location == "sequence:2");
+    }
+
+    [Fact]
+    public void ScriptModeRequiresCompleteCrystalSphereClickIdentity()
+    {
+        RunRecord record = TestRecordFactory.CreateScriptBuilder()
+            .AppendJson("run.start", TestRecordFactory.ScriptRunStart)
+            .AppendJson("event.crystal_sphere.set_tool", "{\"actor\":\"p0\",\"data\":{\"tool\":\"none\"}}")
+            .AppendJson("event.crystal_sphere.click", "{\"actor\":\"p0\",\"data\":{\"x\":3,\"y\":7,\"tool\":\"small\"}}")
+            .Build();
+
+        Sts2PgnValidationResult result = ValidateScript(record);
+
+        Assert.Contains(result.Errors, issue => issue.Code == "script_missing_identity"
+            && issue.Location == "sequence:2" && issue.Message.Contains("data.tool"));
+        Assert.Contains(result.Errors, issue => issue.Code == "script_missing_identity"
+            && issue.Location == "sequence:3" && issue.Message.Contains("data.remaining_before"));
+    }
+
+    [Fact]
     public void ScriptModeRequiresChoiceOfferAndFingerprints()
     {
         RunRecord record = TestRecordFactory.CreateScriptBuilder()

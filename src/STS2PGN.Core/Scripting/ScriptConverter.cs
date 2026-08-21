@@ -30,7 +30,7 @@ public static class ScriptConverter
 
     /// <summary>
     /// Converts a recording. The result is validated in script mode; a recording that carries
-    /// records the profile forbids (Crystal Sphere, unknown actions, undo end turn) fails with
+    /// records the profile forbids (unknown actions or undo end turn) fails with
     /// <see cref="Sts2PgnValidationException"/>.
     /// </summary>
     public static RunRecord FromRecording(RunRecord recording, string producer)
@@ -71,7 +71,7 @@ public static class ScriptConverter
             else if (ScriptProfile.DriveableKinds.Contains(entry.Kind)
                      || (ScriptProfile.ForbiddenKinds.Contains(entry.Kind) && entry.Kind is not ("run.finish" or "run.resume")))
             {
-                // Undrivable *decisions* (Crystal Sphere, unknown actions, undo end turn) are kept so
+                // Undrivable *decisions* (unknown actions and undo end turn) are kept so
                 // validation names them instead of silently dropping a decision; run.finish and
                 // run.resume are outcomes and are dropped like observations.
                 builder.Append(entry.Kind, entry.Payload);

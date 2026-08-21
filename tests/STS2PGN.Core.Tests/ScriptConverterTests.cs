@@ -23,6 +23,10 @@ public sealed class ScriptConverterTests
             .AppendJson("room.enter", "{\"data\":{}}")
             .AppendJson("rest.choose", "{\"actor\":\"p0\",\"data\":{\"option_id\":\"rest\"}}")
             .AppendJson("rest.resolve", "{\"actor\":\"p0\",\"data\":{\"action_sequence\":5,\"success\":true}}")
+            .AppendJson("event.crystal_sphere.start", "{\"actor\":\"p0\",\"data\":{\"grid\":{}}}")
+            .AppendJson("event.crystal_sphere.set_tool", "{\"actor\":\"p0\",\"data\":{\"tool\":\"small\"}}")
+            .AppendJson("event.crystal_sphere.click", "{\"actor\":\"p0\",\"data\":{\"x\":3,\"y\":7,\"tool\":\"small\",\"remaining_before\":4}}")
+            .AppendJson("event.crystal_sphere.proceed", "{\"actor\":\"p0\",\"data\":{}}")
             .AppendJson("run.finish", "{\"data\":{\"result\":\"VICTORY\"}}")
             .Build(RunResult.Victory);
 
@@ -37,12 +41,14 @@ public sealed class ScriptConverterTests
         Assert.Equal("CUSTOM", script.Metadata.GetValue("Mode"));
         Assert.Equal("TESTSEED", script.Metadata.GetValue("Seed"));
         Assert.Equal(["Format", "FormatVersion", "Producer"], script.Metadata.Tags.Take(3).Select(tag => tag.Name));
-        Assert.Equal(["run.start", "map.choose", "rest.choose"], script.Entries.Select(entry => entry.Kind));
+        Assert.Equal(
+            ["run.start", "map.choose", "rest.choose", "event.crystal_sphere.set_tool", "event.crystal_sphere.click", "event.crystal_sphere.proceed"],
+            script.Entries.Select(entry => entry.Kind));
         Assert.Equal(RunResult.Incomplete, script.Result);
         Assert.False(script.Entries[0].Payload.GetProperty("data").TryGetProperty("source_snapshot", out _));
 
         DecisionScript parsed = DecisionScript.FromRecord(script);
-        Assert.Equal(2, parsed.Decisions.Count);
+        Assert.Equal(5, parsed.Decisions.Count);
     }
 
     [Fact]
