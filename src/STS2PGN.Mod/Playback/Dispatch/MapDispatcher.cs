@@ -1,6 +1,7 @@
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens;
@@ -27,8 +28,8 @@ internal sealed class MapDispatcher : IDecisionDispatcher
     public bool SettlesByObservation(ScriptDecision decision) => decision.Kind != "room.proceed";
 
     /// <summary>
-    /// Leaving a rest site, shop, treasure room, or event shop is presentation-only (the recorder
-    /// never writes it), so a script goes straight from the room's last decision to map.choose.
+    /// Leaving a rest site, shop, treasure room, event shop, or finished event is presentation-only
+    /// (the recorder never writes it), so a script goes straight from the room's last decision to map.choose.
     /// Click the room's Proceed button the way a player would; the map then opens.
     /// </summary>
     public bool TryAdvanceSurface(ScriptDecision decision)
@@ -67,14 +68,22 @@ internal sealed class MapDispatcher : IDecisionDispatcher
             }
         }
 
-        if (run.EventRoom is { } eventRoom && LiveGame.FindFirst<NFakeMerchant>(eventRoom) is { } fakeMerchant)
+        if (run.EventRoom is { } eventRoom)
         {
-            if (LiveGame.FindFirst<NMerchantInventory>(fakeMerchant) is { IsOpen: true })
+            if (LiveGame.FindFirst<NFakeMerchant>(eventRoom) is { } fakeMerchant)
             {
-                return Click(LiveGame.FindAll<NBackButton>(fakeMerchant).FirstOrDefault(LiveGame.IsUsable));
+                if (LiveGame.FindFirst<NMerchantInventory>(fakeMerchant) is { IsOpen: true })
+                {
+                    return Click(LiveGame.FindAll<NBackButton>(fakeMerchant).FirstOrDefault(LiveGame.IsUsable));
+                }
+
+                return Click(LiveGame.FindFirst<NProceedButton>(fakeMerchant));
             }
 
-            return Click(LiveGame.FindFirst<NProceedButton>(fakeMerchant));
+            // A finished event shows a synthetic PROCEED option (NEventRoom.SetOptions) whose only
+            // effect is opening the map; the recorder ignores it (RecordEventChoice returns on
+            // IsFinished), so the script goes straight from the event's last choice to map.choose.
+            return Click(LiveGame.FindAll<NEventOptionButton>(eventRoom).FirstOrDefault(button => button.Option is { IsProceed: true }));
         }
 
         return false;

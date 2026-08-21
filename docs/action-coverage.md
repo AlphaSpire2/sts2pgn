@@ -91,7 +91,7 @@ Nested rooms created by events are captured by the normal room stack and lifecyc
 |---|---|---|---|
 | `shop.purchase` / `shop.purchase.resolve` | `Core.Entities.Merchant/MerchantEntry.cs`: `OnTryPurchaseWrapper` | Reproduce wrapper validation, then emit the pre-purchase flat inventory index, category/index, and portable type/model/cost before effects; correlate the outcome. | Direct |
 | `shop.remove_card` / `shop.remove_card.resolve` | `OneOffSynchronizer.DoLocalMerchantCardRemoval` plus `PlayerChoiceReceived` | Emit cost/cancelability before the deck choice; selected deck index/fingerprint follows; outcome is correlated afterward. `MerchantCardRemovalEntry` is excluded from generic `shop.purchase` interception so these paths are mutually exclusive. | Direct/Event |
-| shop/rest close | proceed button opens the map | Presentation-only; the following authoritative `map.choose` advances the run. | Excluded |
+| shop/rest/finished-event close | proceed button (or the finished event's synthetic PROCEED option) opens the map | Presentation-only; the following authoritative `map.choose` advances the run. | Excluded |
 
 Clicks rejected by wrapper validation (out of stock or insufficient gold) are not recorded. An accepted operation that later returns false is recorded with `success: false` because cancellation or a full inventory can affect the interaction sequence.
 
@@ -125,7 +125,7 @@ live game before acting, the call it makes, and the recorder context that settle
 | `combat.use_potion` | idle | `potion_slot` model + target | `PotionModel.EnqueueManualUse(target)` | `action.settled` |
 | `combat.discard_potion` | idle | `potion_slot` model | discard action enqueue | `action.settled` |
 | `combat.end_turn` | player side, not yet ended, `turn` matches | turn number | `PlayerCmd.EndTurn(player, canBackOut: false)` (recorded by `DirectEndTurnPatch`) | `combat.player_turn.start` / reward or run-end settle |
-| `map.choose` | map screen open (the driver first clicks the unrecorded Proceed button of a rest site, shop, treasure room, or event shop, exactly as a player would) | travelable point at `(col,row)` | `NMapScreen.OnMapPointSelectedLocally(point)` | `room.enter` |
+| `map.choose` | map screen open (the driver first clicks the unrecorded Proceed button of a rest site, shop, treasure room, or event shop, or a finished event's synthetic PROCEED option, exactly as a player would) | travelable point at `(col,row)` | `NMapScreen.OnMapPointSelectedLocally(point)` | `room.enter` |
 | `act.next` | act-end surface | — | `ActChangeSynchronizer.SetLocalPlayerReady()` | `act.enter` |
 | `room.proceed` | terminal rewards screen | not Crystal Sphere | `RunManager.ProceedFromTerminalRewardsScreen()` | `reward.settled` / map open |
 | `event.choose` | event room, options shown | `option_index` + `option_id`, unlocked | `EventSynchronizer.ChooseLocalOption(index)` | `event.choice.settled` / `room.enter` / `choice.offered` |
