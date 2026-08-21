@@ -155,9 +155,10 @@ dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll validate --script my-scri
 dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll to-script my-run.sts2pgn --producer sts2pgn-tool/0.8.0
 ```
 
-A recording is never accepted as a script directly (the driver refuses it with
-`refused_at_start`); `to-script` strips it to decisions, swaps `RecorderVersion` for
-`Producer`, and sets `Mode CUSTOM`.
+The driver performs the same conversion automatically when it is given a recording
+(the report says `converted_from_recording: true`); `to-script` is for producing the
+script file explicitly, for example to hand-edit it. Either way the conversion strips the
+recording to decisions, swaps `RecorderVersion` for `Producer`, and sets `Mode CUSTOM`.
 
 The playback driver lives in the mod and executes scripts in the real game while the
 recorder records the session as a normal authoritative recording:

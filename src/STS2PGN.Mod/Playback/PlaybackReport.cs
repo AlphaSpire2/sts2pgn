@@ -81,6 +81,10 @@ internal sealed class PlaybackReport
     [JsonPropertyName("precondition_failures")]
     public List<string> PreconditionFailures { get; } = [];
 
+    /// <summary>The input was a recording, converted to a script at load time (same as `sts2pgn to-script`).</summary>
+    [JsonPropertyName("converted_from_recording")]
+    public bool ConvertedFromRecording { get; set; }
+
     [JsonPropertyName("decisions_total")]
     public int DecisionsTotal { get; set; }
 
