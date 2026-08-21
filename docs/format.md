@@ -173,7 +173,7 @@ payload, exactly as it initializes from `run.start`:
 {
   "data": {
     "reloads": 1,
-    "recorder_version": "0.7.0",
+    "recorder_version": "0.7.1",
     "restored_pre_finished_room": false,
     "source_snapshot": { "schema_version": 16, "encoding": "sts2-save-json", "data": {} },
     "state": { "scope": "run.core" }
@@ -341,6 +341,8 @@ Every post-start observation emitted by the recorder uses `scope = "run.core"` a
 - `special_event`, normally `null`, carries the full Crystal Sphere board, tool, and divination state while that minigame is active;
 - `combat`, or `null` outside a combat room; and
 - for combat, encounter/round/side and transition flags, players keyed by slot, ordered piles with stable combat-card IDs, energy/stars/orbs, and creatures with HP, block, powers, moves, and intents.
+
+The turn-handover transition flags (`ending_player_turn_phase_one`, `ending_player_turn_phase_two`) are projected as their *settled* values once a fight has been won: the game's own unwind always clears them behind the win check, and a raw read there would race the recorder's capture against those continuations (recorder 0.7.0 and earlier could record either value at `reward.offered`). A lost fight projects the flags as they stand, because its chain is cancelled and never clears them. Recorder 0.7.1 introduced this normalization; it removes capture-scheduling noise without changing the field's meaning or any comparison rule, so `projection_version` stays 1.
 
 Arrays with semantic identity are compared by key: `acts/index`, `players/slot`, `rooms/stack_depth`, `choices.player_choices/id`, `choices.rewards/id`, `run.map.points/id`, `combat.players/slot`, and `combat.creatures/combat_id`. All other arrays preserve gameplay order.
 
