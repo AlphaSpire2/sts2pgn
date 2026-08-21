@@ -23,6 +23,13 @@ internal interface IDecisionDispatcher
     /// <summary>True when the surface this decision acts on is present. Must not throw.</summary>
     bool IsReady(ScriptDecision decision);
 
+    /// <summary>
+    /// Performs a presentation-only step the recorder never records but the decision needs
+    /// (for example clicking a room's Proceed button so the map opens). Called by the driver while
+    /// <see cref="IsReady"/> is false, at most about once per second. Returns true when it acted.
+    /// </summary>
+    bool TryAdvanceSurface(ScriptDecision decision) => false;
+
     /// <summary>Compares the script's identity with the live offer. Never mutates game state.</summary>
     VerifyResult Verify(ScriptDecision decision);
 

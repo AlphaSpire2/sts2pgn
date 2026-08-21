@@ -71,7 +71,8 @@ Per script, in order:
    recorder opens an ordinary recording (`RecorderVersion`, never `Producer`).
 3. **Drive, one decision at a time:** *wait* until the game is idle and the record's
    surface is present (no running action, empty queue, no modal, the expected screen or
-   phase) → *verify* the script's fingerprints against what the game offers (hand card
+   phase; while waiting, the driver performs presentation-only steps the recorder never
+   writes, such as clicking a rest/shop/treasure room's Proceed button so the map opens) → *verify* the script's fingerprints against what the game offers (hand card
    and target, travelable map point, reward set and entry, event/rest option, merchant
    entry, relic list, every option of a registered choice offer) → *submit* through the
    same game-code path a player's input reaches (see the driver table in

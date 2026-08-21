@@ -1,5 +1,11 @@
 using MegaCrit.Sts2.Core.Map;
+using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.Events.Custom;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Runs;
 using STS2PGN.Scripting;
@@ -19,6 +25,71 @@ internal sealed class MapDispatcher : IDecisionDispatcher
     };
 
     public bool SettlesByObservation(ScriptDecision decision) => decision.Kind != "room.proceed";
+
+    /// <summary>
+    /// Leaving a rest site, shop, treasure room, or event shop is presentation-only (the recorder
+    /// never writes it), so a script goes straight from the room's last decision to map.choose.
+    /// Click the room's Proceed button the way a player would; the map then opens.
+    /// </summary>
+    public bool TryAdvanceSurface(ScriptDecision decision)
+    {
+        if (decision.Kind != "map.choose" || NMapScreen.Instance is { IsOpen: true } || LiveGame.TopOverlay is not null)
+        {
+            return false;
+        }
+
+        NRun? run = NRun.Instance;
+        if (run is null)
+        {
+            return false;
+        }
+
+        if (run.RestSiteRoom is { } rest && Click(rest.ProceedButton))
+        {
+            return true;
+        }
+
+        if (run.TreasureRoom is { } treasure && Click(treasure.ProceedButton))
+        {
+            return true;
+        }
+
+        if (run.MerchantRoom is { } merchant)
+        {
+            if (merchant.Inventory is { IsOpen: true })
+            {
+                return Click(LiveGame.FindAll<NBackButton>(merchant).FirstOrDefault(LiveGame.IsUsable));
+            }
+
+            if (Click(merchant.ProceedButton))
+            {
+                return true;
+            }
+        }
+
+        if (run.EventRoom is { } eventRoom && LiveGame.FindFirst<NFakeMerchant>(eventRoom) is { } fakeMerchant)
+        {
+            if (LiveGame.FindFirst<NMerchantInventory>(fakeMerchant) is { IsOpen: true })
+            {
+                return Click(LiveGame.FindAll<NBackButton>(fakeMerchant).FirstOrDefault(LiveGame.IsUsable));
+            }
+
+            return Click(LiveGame.FindFirst<NProceedButton>(fakeMerchant));
+        }
+
+        return false;
+    }
+
+    private static bool Click(NClickableControl? control)
+    {
+        if (!LiveGame.IsUsable(control))
+        {
+            return false;
+        }
+
+        control!.ForceClick();
+        return true;
+    }
 
     public VerifyResult Verify(ScriptDecision decision)
     {

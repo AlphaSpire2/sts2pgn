@@ -109,12 +109,28 @@ internal sealed class PlaybackDriver
             return false;
         }
 
+        DateTime lastAdvance = DateTime.MinValue;
         bool ready = await PlaybackWait.TryUntilAsync(
-            // Nested choices are asked while the initiating action is still executing, so they
-            // cannot wait for the executor to go idle; an open modal still blocks them.
-            () => (decision.IsChoice ? LiveGame.NoModalOpen : LiveGame.IsIdle)
-                && SafeIsReady(dispatcher, decision)
-                && OfferSettleElapsed(decision),
+            () =>
+            {
+                // Nested choices are asked while the initiating action is still executing, so they
+                // cannot wait for the executor to go idle; an open modal still blocks them.
+                bool gate = decision.IsChoice ? LiveGame.NoModalOpen : LiveGame.IsIdle;
+                if (gate && SafeIsReady(dispatcher, decision))
+                {
+                    return OfferSettleElapsed(decision);
+                }
+
+                // Not there yet: let the dispatcher perform any unrecorded presentation step
+                // (room Proceed buttons) that a player would click to reach the decision.
+                if (gate && DateTime.UtcNow - lastAdvance >= TimeSpan.FromSeconds(1))
+                {
+                    lastAdvance = DateTime.UtcNow;
+                    SafeAdvance(dispatcher, decision);
+                }
+
+                return false;
+            },
             _timeout,
             _cancellation);
         if (!ready)
@@ -200,6 +216,21 @@ internal sealed class PlaybackDriver
         {
             GD.PrintErr($"[STS2PGN] Playback readiness check for {decision.Kind} threw: {exception.Message}");
             return false;
+        }
+    }
+
+    private static void SafeAdvance(IDecisionDispatcher dispatcher, ScriptDecision decision)
+    {
+        try
+        {
+            if (dispatcher.TryAdvanceSurface(decision))
+            {
+                GD.Print($"[STS2PGN] Playback: advanced the screen toward {decision.Kind} (sequence {decision.Sequence})");
+            }
+        }
+        catch (Exception exception)
+        {
+            GD.PrintErr($"[STS2PGN] Playback surface advance for {decision.Kind} threw: {exception.Message}");
         }
     }
 
