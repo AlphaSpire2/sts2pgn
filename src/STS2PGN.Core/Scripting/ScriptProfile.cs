@@ -32,6 +32,7 @@ public static class ScriptProfile
     /// <summary>Initiating actions that may suspend for nested <c>choice.*</c> records.</summary>
     public static readonly IReadOnlySet<string> SuspendableKinds = new HashSet<string>(StringComparer.Ordinal)
     {
+        "combat.end_turn",
         "combat.play_card",
         "combat.use_potion",
         "event.choose",

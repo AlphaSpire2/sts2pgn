@@ -47,8 +47,12 @@ internal sealed class PlaybackDriver
     private readonly TimeSpan _timeout;
     private readonly CancellationToken _cancellation;
     private readonly object _gate = new();
-    private readonly List<(long Sequence, string Kind, JsonElement Data)> _recorded = [];
-    private readonly List<(long Sequence, string Context)> _settled = [];
+    // Arrival ticks order recorder events. Settling is "an observation arrived after this
+    // decision was recorded": some completion observations (turn boundaries, end-turn
+    // flushes) reference the initiating decision's sequence, not the nested choice's.
+    private readonly List<(long Tick, long Sequence, string Kind, JsonElement Data)> _recorded = [];
+    private readonly List<(long Tick, long Sequence, string Context)> _settled = [];
+    private long _tick;
     private DateTime _lastOfferAt = DateTime.MinValue;
 
     public PlaybackDriver(DecisionScript script, PlaybackReport report, TimeSpan timeout, CancellationToken cancellation)
@@ -148,7 +152,7 @@ internal sealed class PlaybackDriver
             return false;
         }
 
-        (long Sequence, string Kind, JsonElement Data)? recorded = null;
+        (long Tick, long Sequence, string Kind, JsonElement Data)? recorded = null;
         bool wasRecorded = await PlaybackWait.TryUntilAsync(
             () => (recorded = FindRecorded(decision.Kind, baseline)) is not null,
             _timeout,
@@ -171,8 +175,9 @@ internal sealed class PlaybackDriver
         if (dispatcher.SettlesByObservation(decision))
         {
             long recordedSequence = recorded.Value.Sequence;
+            long recordedTick = recorded.Value.Tick;
             bool settled = await PlaybackWait.TryUntilAsync(
-                () => HasSettled(recordedSequence) || !RecorderService.IsRecording,
+                () => HasSettledAfter(recordedTick) || !RecorderService.IsRecording,
                 _timeout,
                 _cancellation);
             if (!settled)
@@ -215,7 +220,7 @@ internal sealed class PlaybackDriver
 
         lock (_gate)
         {
-            _recorded.Add((sequence, kind, element));
+            _recorded.Add((++_tick, sequence, kind, element));
         }
     }
 
@@ -231,7 +236,7 @@ internal sealed class PlaybackDriver
     {
         lock (_gate)
         {
-            _settled.Add((sequence, context));
+            _settled.Add((++_tick, sequence, context));
             if (context == "choice.offered")
             {
                 _lastOfferAt = DateTime.UtcNow;
@@ -239,7 +244,7 @@ internal sealed class PlaybackDriver
         }
     }
 
-    private (long Sequence, string Kind, JsonElement Data)? FindRecorded(string kind, long baseline)
+    private (long Tick, long Sequence, string Kind, JsonElement Data)? FindRecorded(string kind, long baseline)
     {
         lock (_gate)
         {
@@ -255,11 +260,11 @@ internal sealed class PlaybackDriver
         }
     }
 
-    private bool HasSettled(long recordedSequence)
+    private bool HasSettledAfter(long recordedTick)
     {
         lock (_gate)
         {
-            return _settled.Any(entry => entry.Sequence >= recordedSequence);
+            return _settled.Any(entry => entry.Tick > recordedTick);
         }
     }
 

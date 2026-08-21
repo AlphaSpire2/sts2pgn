@@ -186,6 +186,8 @@ public sealed class Sts2PgnValidatorScriptModeTests
             .AppendJson("combat.play_card", PlayCard)
             .AppendJson("choice.cards", CardChoice)
             .AppendJson("choice.cards", CardChoice)
+            .AppendJson("combat.end_turn", "{\"actor\":\"p0\",\"data\":{\"turn\":1}}")
+            .AppendJson("choice.cards", CardChoice)
             .AppendJson("reward.claim", "{\"actor\":\"p0\",\"data\":{\"set_id\":0,\"reward_index\":1,\"reward\":{\"type\":\"card\"}}}")
             .AppendJson("choice.index", RewardChoice)
             .Build();
