@@ -228,7 +228,11 @@ Records:
   known act and requires every later act to match the seed) and
   `players[0].unlocks` (`epochs`, `encounters_seen`, `number_of_runs`). The driver
   verifies both against the live profile and refuses to start on a mismatch
-  (`script_missing_acts`, `script_missing_unlocks`, `script_invalid_unlocks`).
+  (`script_missing_acts`, `script_missing_unlocks`, `script_invalid_unlocks`). Unlocks are
+  compared for generation-equivalence, not byte-equality: `epochs` exactly,
+  `number_of_runs` as first-run-or-not, and `encounters_seen` only through the seen-status
+  of the twelve discovery bosses (`ScriptUnlocks.DiscoveryBosses`); other differences are
+  logged as warnings.
   `source_snapshot`, the full projection, and the `run.start` observation are not
   required.
 - Then come decision records in file order, using the existing record kinds and the
@@ -404,7 +408,7 @@ Comparison rules for this scope are:
 - `players` is keyed by `slot`, although its wire representation preserves run order.
 - Decks, relics, potion slots, visited map coordinates, modifiers, and each relic grab-bag list are ordered.
 - RNG counter objects are keyed by their symbolic counter name and compared exactly.
-- `unlocks` is the profile state the run was created with: `epochs` (revealed epoch IDs) and `encounters_seen` (encounter model IDs) are sets serialized in ordinally sorted order; `number_of_runs` is the profile's completed-run count; the game only distinguishes `0` (first run) from any positive value, so the playback driver compares it that way while recordings still carry the exact count.
+- `unlocks` is the profile state the run was created with: `epochs` (revealed epoch IDs) and `encounters_seen` (encounter model IDs) are sets serialized in ordinally sorted order; `number_of_runs` is the profile's completed-run count. Run generation reads this state in exactly three ways, and the playback driver compares only those: revealed epochs filter card/potion/relic pools and gate alternate acts and ancients (compared exactly); `number_of_runs` is read solely through `== 0` first-run clauses (compared as first-run-or-not); and `encounters_seen` is read only by `ActModel.ApplyDiscoveryOrderModifications`, which overrides the rolled boss with the first unseen entry of the act's `BossDiscoveryOrder` (compared only for those twelve bosses). Recordings still carry the exact values.
 - Card, relic, enchantment, and modifier saved properties are name-sorted portable objects.
 - Odds are exact STS2 single-precision values encoded as canonical JSON numbers.
 - `rooms` and choice collections are explicitly empty and `combat` is `null` at a new-run boundary.
