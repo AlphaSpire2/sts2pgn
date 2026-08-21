@@ -166,13 +166,27 @@ internal static class LiveStateProjector
             .Select(creature => ProjectCreature(creature, combat, playerSlots))
             .ToArray();
 
+        // Once a fight has been won, the turn-handover flags always settle to
+        // false: every path from the win check unwinds through synchronous
+        // continuations to the line that clears them, and only the scheduling
+        // of this capture against those continuations (the awaits
+        // EndCombatInternal makes for saving and presentation) could read true
+        // here. Project the settled value so the trace is deterministic. A
+        // lost fight keeps its flags: its chain is cancelled with the combat's
+        // own token, never reaches the clear, and that standing state is real.
+        bool settledAfterWin = !CombatManager.Instance.IsInProgress
+            && !CombatManager.Instance.IsStarting
+            && combat.Players.All(player => !player.Creature.IsDead);
+
         return JsonSerializer.SerializeToNode(new
         {
             encounter_model = combat.Encounter?.Id.ToString(),
             round = combat.RoundNumber,
             side = PortablePayloads.Symbol(combat.CurrentSide),
-            ending_player_turn_phase_one = CombatManager.Instance.EndingPlayerTurnPhaseOne,
-            ending_player_turn_phase_two = CombatManager.Instance.EndingPlayerTurnPhaseTwo,
+            ending_player_turn_phase_one =
+                !settledAfterWin && CombatManager.Instance.EndingPlayerTurnPhaseOne,
+            ending_player_turn_phase_two =
+                !settledAfterWin && CombatManager.Instance.EndingPlayerTurnPhaseTwo,
             player_actions_disabled = CombatManager.Instance.PlayerActionsDisabled,
             players,
             creatures,
