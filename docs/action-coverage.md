@@ -125,7 +125,7 @@ live game before acting, the call it makes, and the recorder context that settle
 | `combat.use_potion` | idle | `potion_slot` model + target | `PotionModel.EnqueueManualUse(target)` | `action.settled` |
 | `combat.discard_potion` | idle | `potion_slot` model | discard action enqueue | `action.settled` |
 | `combat.end_turn` | player side, not yet ended, `turn` matches | turn number | `PlayerCmd.EndTurn(player, canBackOut: false)` (recorded by `DirectEndTurnPatch`) | `combat.player_turn.start` / reward or run-end settle |
-| `map.choose` | map screen open | travelable point at `(col,row)` | `NMapScreen.OnMapPointSelectedLocally(point)` | `room.enter` |
+| `map.choose` | map screen open (the driver first clicks the unrecorded Proceed button of a rest site, shop, treasure room, or event shop, exactly as a player would) | travelable point at `(col,row)` | `NMapScreen.OnMapPointSelectedLocally(point)` | `room.enter` |
 | `act.next` | act-end surface | — | `ActChangeSynchronizer.SetLocalPlayerReady()` | `act.enter` |
 | `room.proceed` | terminal rewards screen | not Crystal Sphere | `RunManager.ProceedFromTerminalRewardsScreen()` | `reward.settled` / map open |
 | `event.choose` | event room, options shown | `option_index` + `option_id`, unlocked | `EventSynchronizer.ChooseLocalOption(index)` | `event.choice.settled` / `room.enter` / `choice.offered` |
