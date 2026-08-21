@@ -109,6 +109,44 @@ public static class Sts2PgnParser
         return new RunRecord(new RunMetadata(tags), entries, result, recovered);
     }
 
+    /// <summary>
+    /// Parses only the tag section, stopping at the blank line that opens the record
+    /// section. Useful for cheaply identifying a trace without loading its records.
+    /// </summary>
+    public static RunMetadata ParseMetadata(TextReader reader)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+        List<TagPair> tags = [];
+        int lineNumber = 0;
+        while (TryReadPhysicalLine(reader, out string line, out bool wasTerminated))
+        {
+            lineNumber++;
+            if (line.Length == 0)
+            {
+                if (tags.Count == 0)
+                {
+                    throw Error("The tag section cannot be empty.", lineNumber);
+                }
+
+                return new RunMetadata(tags);
+            }
+
+            if (tags.Count > 0 && char.IsAsciiDigit(line[0]))
+            {
+                throw Error("The tag section must be followed by a blank line.", lineNumber);
+            }
+
+            if (!wasTerminated)
+            {
+                throw Error("The tag section ended with an unterminated line.", lineNumber);
+            }
+
+            tags.Add(ParseTag(line, lineNumber));
+        }
+
+        throw Error("The tag section must be followed by a blank line.", lineNumber + 1);
+    }
+
     private static TagPair ParseTag(string line, int lineNumber)
     {
         int index = 0;

@@ -29,6 +29,25 @@ public sealed class Sts2PgnStreamWriter : IDisposable
         FlushDurably();
     }
 
+    private Sts2PgnStreamWriter(TextWriter writer, long nextSequence, bool leaveOpen)
+    {
+        _writer = writer;
+        _leaveOpen = leaveOpen;
+        _nextSequence = nextSequence;
+    }
+
+    /// <summary>
+    /// Continues an existing incomplete trace. The underlying writer must already be
+    /// positioned immediately after the final complete, newline-terminated record;
+    /// no tag section is written.
+    /// </summary>
+    public static Sts2PgnStreamWriter Continue(TextWriter writer, long nextSequence, bool leaveOpen = false)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentOutOfRangeException.ThrowIfLessThan(nextSequence, 1);
+        return new Sts2PgnStreamWriter(writer, nextSequence, leaveOpen);
+    }
+
     public RunRecordEntry Append(string kind, JsonElement payload)
     {
         ThrowIfUnavailable();

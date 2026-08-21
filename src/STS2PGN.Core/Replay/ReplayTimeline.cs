@@ -12,7 +12,6 @@ public sealed class ReplayTimeline : IReadOnlyList<ReplayStep>
         "act.enter",
         "room.enter",
         "room.exit",
-        "run.resume",
     };
 
     private readonly ReplayStep[] _steps;
@@ -35,6 +34,11 @@ public sealed class ReplayTimeline : IReadOnlyList<ReplayStep>
         if (kind == "run.start")
         {
             return ReplayRecordRole.Initialization;
+        }
+
+        if (kind == "run.resume")
+        {
+            return ReplayRecordRole.Reinitialization;
         }
 
         if (kind == "state.observe")

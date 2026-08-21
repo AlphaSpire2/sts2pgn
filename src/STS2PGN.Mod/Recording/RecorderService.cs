@@ -14,6 +14,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves;
 using STS2PGN.Model;
 
 namespace STS2PGN.Mod.Recording;
@@ -39,7 +40,7 @@ internal static class RecorderService
     private static long? _pendingEventAdvanceSequence;
     private static long? _pendingCrystalSphereSequence;
     private static JsonElement? _specialEventState;
-    private static bool _nextRunIsResume;
+    private static PendingResume? _pendingResume;
 
     public static void Initialize()
     {
@@ -77,7 +78,14 @@ internal static class RecorderService
         ExecuteSafely("closing incomplete trace", StopSession);
     }
 
-    public static void MarkNextRunAsResume() => _nextRunIsResume = true;
+    public static void MarkNextRunAsResume(SerializableRun save)
+    {
+        // Snapshot the restored save immediately: it is the authoritative anchor the
+        // game loaded from disk, before setup mutates any state derived from it.
+        string? snapshotJson = null;
+        ExecuteSafely("capturing resumed save snapshot", () => snapshotJson = JsonSerializationUtility.ToJson(save));
+        _pendingResume = new PendingResume(save, snapshotJson);
+    }
 
     public static void RecordEventChoice(int optionIndex)
     {
@@ -406,10 +414,15 @@ internal static class RecorderService
             return;
         }
 
+        PendingResume? resume = _pendingResume;
+        _pendingResume = null;
         try
         {
             _state = state;
-            _session = RecordingSession.Start(state, _config);
+            _session = resume is not null
+                ? RecordingSession.TryResume(state, _config, resume.Save)
+                : null;
+            _session ??= RecordingSession.Start(state, _config);
             RoomStack.Clear();
             SeedRoomStack(state);
 
@@ -433,22 +446,51 @@ internal static class RecorderService
             _pendingEventAdvanceSequence = null;
             _pendingCrystalSphereSequence = null;
             _specialEventState = null;
-            if (_nextRunIsResume)
+            if (resume is not null)
             {
-                long? sequence = TryRecord("run.resume", new { });
-                ObserveAfter(sequence, "run.resume");
+                RecordResume(_session, resume);
             }
 
-            _nextRunIsResume = false;
-            GD.Print($"[STS2PGN] Recording to {_session.Path}");
+            GD.Print(_session.IsContinuation
+                ? $"[STS2PGN] Continuing trace {_session.Path}"
+                : $"[STS2PGN] Recording to {_session.Path}");
         }
         catch (Exception exception)
         {
-            _nextRunIsResume = false;
             StopSession();
             ReportError("starting recorder", exception);
         }
     }
+
+    private static void RecordResume(RecordingSession session, PendingResume resume)
+    {
+        // run.resume is a re-anchoring boundary: the game rewound to its last save
+        // checkpoint, so decisions recorded after that checkpoint never happened in the
+        // resumed timeline. Consumers re-initialize from this payload exactly as they
+        // do from run.start; the following observation duplicates data.state with its
+        // canonical digest, mirroring the run.start pattern.
+        JsonElement resumeState = session.CaptureState(BuildRecorderState());
+        object? sourceSnapshot = resume.SnapshotJson is null ? null : new
+        {
+            schema_version = resume.Save.SchemaVersion,
+            encoding = "sts2-save-json",
+            data = System.Text.Json.Nodes.JsonNode.Parse(resume.SnapshotJson),
+        };
+        long? sequence = TryRecord("run.resume", new
+        {
+            reloads = resume.Save.NumReloads,
+            recorder_version = STS2PgnMod.Version,
+            restored_pre_finished_room = resume.Save.PreFinishedRoom is not null,
+            source_snapshot = sourceSnapshot,
+            state = resumeState,
+        });
+        if (sequence.HasValue)
+        {
+            session.Observe(sequence.Value, "run.resume", resumeState);
+        }
+    }
+
+    private sealed record PendingResume(SerializableRun Save, string? SnapshotJson);
 
     private static void OnActionEnqueued(GameAction action)
     {
