@@ -1,6 +1,7 @@
 using System.Text.Json;
 using STS2PGN.Model;
 using STS2PGN.Parsing;
+using STS2PGN.Scripting;
 using STS2PGN.Validation;
 
 namespace STS2PGN.Tool;
@@ -9,7 +10,9 @@ internal static class SummarizeCommand
 {
     public static int Run(string[] args)
     {
-        (IReadOnlyList<string> paths, Sts2PgnParseOptions parseOptions, _) = TraceLoader.ParseArguments(args);
+        ToolArguments arguments = TraceLoader.ParseArguments(args);
+        IReadOnlyList<string> paths = arguments.Paths;
+        Sts2PgnParseOptions parseOptions = arguments.ParseOptions;
         bool anyError = false;
         bool first = true;
         foreach (string path in paths)
@@ -54,7 +57,9 @@ internal static class SummarizeCommand
             Write("Recovery", "truncated unterminated final line was discarded (crash prefix)");
         }
 
-        Sts2PgnValidationResult validation = Sts2PgnValidator.Validate(record);
+        Sts2PgnValidationResult validation = Sts2PgnValidator.Validate(
+            record,
+            ScriptProfile.IsScript(tags) ? Sts2PgnValidationMode.Script : Sts2PgnValidationMode.Recording);
         Write("Validation", validation.IsValid
             ? $"valid, {validation.Warnings.Count()} warning(s)"
             : $"INVALID, {validation.Errors.Count()} error(s) (run 'sts2pgn validate' for details)");

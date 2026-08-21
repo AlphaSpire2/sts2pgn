@@ -1,6 +1,7 @@
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Modding;
+using STS2PGN.Mod.Playback;
 using STS2PGN.Mod.Recording;
 
 namespace STS2PGN.Mod;
@@ -11,12 +12,13 @@ namespace STS2PGN.Mod;
 [ModInitializer(nameof(Initialize))]
 public static class STS2PgnMod
 {
-    public const string Version = "0.7.1";
+    public const string Version = "0.8.0";
 
     public static void Initialize()
     {
         new Harmony("com.sts2pgn.recorder").PatchAll();
         RecorderService.Initialize();
+        PlaybackService.StartFromCommandLine();
         GD.Print($"[STS2PGN] v{Version} initialized");
     }
 }

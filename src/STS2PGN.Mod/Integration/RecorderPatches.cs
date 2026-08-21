@@ -386,7 +386,7 @@ internal static class ChooseCardOfferPatch
                 index,
                 fingerprint = PortablePayloads.CardFingerprint(card),
             }).ToArray(),
-        });
+        }, cards);
 
     [HarmonyPostfix]
     private static void Postfix(ref Task<CardModel?> __result, Player player, uint? __state) =>
@@ -436,7 +436,7 @@ internal static class CardGridOfferPatch
                 index,
                 fingerprint = PortablePayloads.CardFingerprint(card),
             }).ToArray(),
-        });
+        }, cards);
 
     internal static async Task<IEnumerable<CardModel>> ClearWhenComplete(
         Task<IEnumerable<CardModel>> task,
@@ -466,7 +466,7 @@ internal static class BundleOfferPatch
                 index,
                 cards = bundle.Select(PortablePayloads.CardFingerprint).ToArray(),
             }).ToArray(),
-        });
+        }, bundles);
 
     [HarmonyPostfix]
     private static void Postfix(ref Task<IEnumerable<CardModel>> __result, Player player, uint? __state) =>
@@ -485,7 +485,7 @@ internal static class RelicOfferPatch
                 index,
                 model_id = relic.Id.ToString(),
             }).ToArray(),
-        });
+        }, relics);
 
     [HarmonyPostfix]
     private static void Postfix(ref Task<RelicModel?> __result, Player player, uint? __state) =>
@@ -601,4 +601,43 @@ internal static class CrystalSphereProceedPatch
 {
     [HarmonyPrefix]
     private static void Prefix() => RecorderService.RecordCrystalSphereProceed();
+}
+
+// Deck selection screens are opened by CardSelectCmd.FromDeck* after the choice id was reserved.
+// These register live models for the playback driver only; the recorded trace is unchanged.
+
+[HarmonyPatch(typeof(MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NDeckCardSelectScreen),
+    nameof(MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NDeckCardSelectScreen.Create))]
+internal static class DeckGridLiveOfferPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(IReadOnlyList<CardModel> cards) =>
+        RecorderService.RegisterLiveOnlyChoice("deck_grid", cards);
+}
+
+[HarmonyPatch(typeof(MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NDeckUpgradeSelectScreen),
+    nameof(MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NDeckUpgradeSelectScreen.ShowScreen))]
+internal static class DeckUpgradeLiveOfferPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(IReadOnlyList<CardModel> cards) =>
+        RecorderService.RegisterLiveOnlyChoice("deck_upgrade", cards);
+}
+
+[HarmonyPatch(typeof(MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NDeckTransformSelectScreen),
+    nameof(MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NDeckTransformSelectScreen.ShowScreen))]
+internal static class DeckTransformLiveOfferPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(IReadOnlyList<CardModel> cards) =>
+        RecorderService.RegisterLiveOnlyChoice("deck_transform", cards);
+}
+
+[HarmonyPatch(typeof(MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NDeckEnchantSelectScreen),
+    nameof(MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NDeckEnchantSelectScreen.ShowScreen))]
+internal static class DeckEnchantLiveOfferPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(IReadOnlyList<CardModel> cards) =>
+        RecorderService.RegisterLiveOnlyChoice("deck_enchant", cards);
 }

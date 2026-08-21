@@ -1,0 +1,19 @@
+[Format "STS2PGN"]
+[FormatVersion "1"]
+[Producer "spirefish/0.1.0"]
+[Seed "EXAMPLESEED"]
+[Mode "CUSTOM"]
+[Ascension "0"]
+[Players "[{\"slot\":\"p0\",\"character\":\"IRONCLAD\"}]"]
+[GameVersion "EXAMPLE"]
+[GameCommit "UNKNOWN"]
+[ModelIdHash "0"]
+
+1 run.start {"actor":null,"data":{"state":{"scope":"run_start.core","run":{"seed":"EXAMPLESEED","mode":"custom","ascension":0,"act":0,"floor":0},"acts":[{"index":0,"model_id":"OVERGROWTH"},{"index":1,"model_id":"UNDERDOCKS"},{"index":2,"model_id":"THE_SPIRE"}],"players":[{"slot":"p0","character_model":"IRONCLAD","unlocks":{"epochs":["EPOCH_1"],"encounters_seen":["JAW_WORM"],"number_of_runs":4}}]}}}
+2 map.choose {"actor":"p0","data":{"col":1,"row":0}}
+3 combat.play_card {"actor":"p0","data":{"combat_card_index":3,"card_model":"STRIKE","card":{"model_id":"STRIKE","upgrade_level":0},"target_id":7,"target":{"combat_id":7,"model_id":"JAW_WORM"}}}
+4 combat.end_turn {"actor":"p0","data":{"turn":1}}
+5 reward.claim {"actor":"p0","data":{"set_id":0,"reward_index":1,"reward":{"type":"card"}}}
+6 choice.index {"actor":"p0","data":{"indexes":[0],"offered":{"context":"card_reward","options":{"cards":[{"index":0,"fingerprint":{"model_id":"BASH","upgrade_level":0}},{"index":1,"fingerprint":{"model_id":"IRON_WAVE","upgrade_level":0}},{"index":2,"fingerprint":{"model_id":"CLEAVE","upgrade_level":0}}],"alternatives":[{"index":3,"option_id":"skip"}]}}}}
+7 room.proceed {"actor":"p0","data":{}}
+*

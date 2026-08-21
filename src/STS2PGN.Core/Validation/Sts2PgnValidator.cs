@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using STS2PGN.Model;
+using STS2PGN.Scripting;
 using STS2PGN.Serialization;
 
 namespace STS2PGN.Validation;
@@ -66,13 +67,22 @@ public static class Sts2PgnValidator
         "treasure.skip_relic",
     };
 
-    public static Sts2PgnValidationResult Validate(RunRecord record)
+    /// <summary>Validates an authoritative recording (equivalent to <see cref="Sts2PgnValidationMode.Recording"/>).</summary>
+    public static Sts2PgnValidationResult Validate(RunRecord record) =>
+        Validate(record, Sts2PgnValidationMode.Recording);
+
+    /// <summary>Validates a trace against the recording or decision-script profile of Format version 1.</summary>
+    public static Sts2PgnValidationResult Validate(RunRecord record, Sts2PgnValidationMode mode)
     {
         ArgumentNullException.ThrowIfNull(record);
         List<ValidationIssue> issues = [];
 
-        ValidateTags(record, issues);
-        ValidateEntries(record, issues);
+        ValidateTags(record, issues, mode);
+        ValidateEntries(record, issues, mode);
+        if (mode == Sts2PgnValidationMode.Script)
+        {
+            ValidateScriptEntries(record, issues);
+        }
 
         if (record.RecoveredTruncatedFinalLine)
         {
@@ -82,7 +92,7 @@ public static class Sts2PgnValidator
         return new Sts2PgnValidationResult(issues);
     }
 
-    private static void ValidateTags(RunRecord record, List<ValidationIssue> issues)
+    private static void ValidateTags(RunRecord record, List<ValidationIssue> issues, Sts2PgnValidationMode mode)
     {
         foreach (IGrouping<string, TagPair> duplicate in record.Metadata.Tags.GroupBy(tag => tag.Name, StringComparer.Ordinal))
         {
@@ -111,13 +121,19 @@ public static class Sts2PgnValidator
             }
         }
 
-        foreach (string required in RequiredTags)
+        // Producer gets its own script-profile code below instead of the generic missing_tag.
+        IEnumerable<string> requiredTags = mode == Sts2PgnValidationMode.Script
+            ? ScriptProfile.RequiredTags.Where(tag => tag != ScriptProfile.ProducerTag)
+            : RequiredTags;
+        foreach (string required in requiredTags)
         {
             if (record.Metadata.GetValue(required) is null)
             {
                 AddError(issues, "missing_tag", $"Required tag '{required}' is missing.", $"tag:{required}");
             }
         }
+
+        ValidateProfileTags(record, issues, mode);
 
         if (record.Metadata.GetValue("Format") is { } format && format != FormatConstants.Name)
         {
@@ -141,7 +157,7 @@ public static class Sts2PgnValidator
             AddError(issues, "invalid_model_hash", "ModelIdHash must be an unsigned decimal integer.", "tag:ModelIdHash");
         }
 
-        if (record.Metadata.GetValue("Mode") is { } mode && mode is not ("STANDARD" or "DAILY" or "CUSTOM"))
+        if (record.Metadata.GetValue("Mode") is { } modeText && modeText is not ("STANDARD" or "DAILY" or "CUSTOM"))
         {
             AddError(issues, "invalid_mode", "Mode must be STANDARD, DAILY, or CUSTOM.", "tag:Mode");
         }
@@ -190,6 +206,68 @@ public static class Sts2PgnValidator
         }
     }
 
+    private static void ValidateProfileTags(RunRecord record, List<ValidationIssue> issues, Sts2PgnValidationMode mode)
+    {
+        string? producer = record.Metadata.GetValue(ScriptProfile.ProducerTag);
+        string? recorderVersion = record.Metadata.GetValue(ScriptProfile.RecorderVersionTag);
+        if (mode == Sts2PgnValidationMode.Recording)
+        {
+            if (producer is not null)
+            {
+                AddError(
+                    issues,
+                    "recording_carries_producer",
+                    "A recording must not carry a Producer tag; files with Producer are decision scripts.",
+                    "tag:Producer");
+            }
+
+            return;
+        }
+
+        if (producer is null)
+        {
+            AddError(issues, "script_missing_producer", "A decision script requires a Producer tag.", "tag:Producer");
+        }
+        else if (!ScriptProfile.TryParseProducer(producer, out _, out _))
+        {
+            AddError(
+                issues,
+                "script_invalid_producer",
+                "Producer must have the form 'name/version' with a lowercase name.",
+                "tag:Producer");
+        }
+
+        if (recorderVersion is not null)
+        {
+            AddError(
+                issues,
+                "script_carries_recorder_version",
+                "A decision script must not carry RecorderVersion; that tag marks an authoritative recording.",
+                "tag:RecorderVersion");
+        }
+
+        if (record.Metadata.GetValue("Mode") is { } scriptMode && scriptMode != ScriptProfile.RequiredMode)
+        {
+            AddError(
+                issues,
+                "script_mode_not_custom",
+                $"A decision script must use Mode {ScriptProfile.RequiredMode}; it is the only seeded mode the game starts.",
+                "tag:Mode");
+        }
+
+        if (record.Metadata.GetValue("Result") is { } resultText
+            && RunResultExtensions.TryParseToken(resultText, out RunResult headerResult)
+            && headerResult != RunResult.Incomplete)
+        {
+            AddError(issues, "script_result_not_incomplete", "A decision script's Result tag must be '*'.", "tag:Result");
+        }
+
+        if (record.Result != RunResult.Incomplete)
+        {
+            AddError(issues, "script_result_not_incomplete", "A decision script must end with the '*' terminal token.", "result");
+        }
+    }
+
     private static void ValidatePlayersTag(string players, List<ValidationIssue> issues)
     {
         try
@@ -232,7 +310,7 @@ public static class Sts2PgnValidator
         }
     }
 
-    private static void ValidateEntries(RunRecord record, List<ValidationIssue> issues)
+    private static void ValidateEntries(RunRecord record, List<ValidationIssue> issues, Sts2PgnValidationMode mode)
     {
         if (record.Entries.Count == 0)
         {
@@ -476,6 +554,243 @@ public static class Sts2PgnValidator
             }
         }
     }
+
+    /// <summary>
+    /// Decision-script profile checks layered on top of the shared grammar checks: the run.start must
+    /// carry the expected unlock state and acts, every decision must carry complete semantic identity,
+    /// and nested choices must follow an operation that can suspend for them.
+    /// </summary>
+    private static void ValidateScriptEntries(RunRecord record, List<ValidationIssue> issues)
+    {
+        if (record.Entries.Count > 0 && record.Entries[0].Kind == "run.start")
+        {
+            ValidateScriptRunStart(record.Entries[0], issues);
+        }
+
+        bool choiceAllowed = false;
+        foreach (RunRecordEntry entry in record.Entries.Skip(1))
+        {
+            string location = $"sequence:{entry.Sequence}";
+            if (ScriptProfile.ForbiddenKinds.Contains(entry.Kind))
+            {
+                AddError(
+                    issues,
+                    "script_unsupported_record",
+                    $"{entry.Kind} carries no drivable identity and is not allowed in a decision script.",
+                    location);
+                continue;
+            }
+
+            if (ScriptProfile.IgnoredKinds.Contains(entry.Kind))
+            {
+                AddWarning(
+                    issues,
+                    "script_ignored_record",
+                    $"{entry.Kind} is not a decision; a playback driver ignores it.",
+                    location);
+                continue;
+            }
+
+            if (entry.Kind == "run.start")
+            {
+                continue;
+            }
+
+            if (entry.Kind.StartsWith("choice.", StringComparison.Ordinal))
+            {
+                if (!choiceAllowed)
+                {
+                    AddError(
+                        issues,
+                        "script_orphan_choice",
+                        $"{entry.Kind} must follow an operation that suspends for a nested choice.",
+                        location);
+                }
+            }
+            else
+            {
+                choiceAllowed = ScriptProfile.SuspendableKinds.Contains(entry.Kind);
+            }
+
+            ValidateScriptDecisionIdentity(entry, issues);
+        }
+    }
+
+    private static void ValidateScriptRunStart(RunRecordEntry runStart, List<ValidationIssue> issues)
+    {
+        string location = $"sequence:{runStart.Sequence}";
+        if (!TryGetData(runStart, out JsonElement data)
+            || !data.TryGetProperty("state", out JsonElement state)
+            || state.ValueKind != JsonValueKind.Object)
+        {
+            AddError(issues, "script_missing_unlocks", "A decision script's run.start requires data.state.", location);
+            AddError(issues, "script_missing_acts", "A decision script's run.start requires data.state.acts.", location);
+            return;
+        }
+
+        if (!state.TryGetProperty("acts", out JsonElement acts)
+            || acts.ValueKind != JsonValueKind.Array
+            || !HasValidActs(acts))
+        {
+            AddError(
+                issues,
+                "script_missing_acts",
+                "run.start data.state.acts must list every act with index and model_id.",
+                location);
+        }
+
+        if (!state.TryGetProperty("players", out JsonElement players)
+            || players.ValueKind != JsonValueKind.Array
+            || players.GetArrayLength() == 0
+            || players[0].ValueKind != JsonValueKind.Object
+            || !players[0].TryGetProperty("unlocks", out JsonElement unlocks)
+            || unlocks.ValueKind != JsonValueKind.Object)
+        {
+            AddError(
+                issues,
+                "script_missing_unlocks",
+                "run.start data.state.players[0].unlocks is required so the driver can verify the live profile.",
+                location);
+            return;
+        }
+
+        if (!IsStringArray(unlocks, "epochs")
+            || !IsStringArray(unlocks, "encounters_seen")
+            || !HasNonNegativeInteger(unlocks, "number_of_runs"))
+        {
+            AddError(
+                issues,
+                "script_invalid_unlocks",
+                "unlocks requires string arrays epochs and encounters_seen plus a non-negative number_of_runs.",
+                location);
+        }
+    }
+
+    private static void ValidateScriptDecisionIdentity(RunRecordEntry entry, List<ValidationIssue> issues)
+    {
+        string location = $"sequence:{entry.Sequence}";
+        if (!TryGetData(entry, out JsonElement data))
+        {
+            AddError(issues, "script_missing_identity", $"{entry.Kind} requires a data object.", location);
+            return;
+        }
+
+        List<string> missing = [];
+        void Require(bool present, string field)
+        {
+            if (!present)
+            {
+                missing.Add(field);
+            }
+        }
+
+        switch (entry.Kind)
+        {
+            case "combat.play_card":
+                Require(HasNonNegativeInteger(data, "combat_card_index"), "combat_card_index");
+                Require(HasNonEmptyString(data, "card_model"), "card_model");
+                Require(HasObject(data, "card"), "card");
+                break;
+            case "combat.use_potion":
+            case "combat.discard_potion":
+                Require(HasNonNegativeInteger(data, "potion_slot"), "potion_slot");
+                Require(HasNonEmptyString(data, "potion_model"), "potion_model");
+                break;
+            case "combat.end_turn":
+                Require(HasInteger(data, "turn"), "turn");
+                break;
+            case "map.choose":
+                Require(HasInteger(data, "col"), "col");
+                Require(HasInteger(data, "row"), "row");
+                break;
+            case "treasure.choose_relic":
+                Require(HasNonNegativeInteger(data, "relic_index"), "relic_index");
+                Require(HasNonEmptyString(data, "relic_model"), "relic_model");
+                Require(HasArray(data, "offered_relics"), "offered_relics");
+                break;
+            case "reward.claim":
+                Require(HasInteger(data, "set_id"), "set_id");
+                Require(HasNonNegativeInteger(data, "reward_index"), "reward_index");
+                Require(HasObject(data, "reward"), "reward");
+                break;
+            case "reward.skip":
+                Require(HasInteger(data, "set_id"), "set_id");
+                break;
+            case "event.choose":
+                Require(HasNonNegativeInteger(data, "option_index"), "option_index");
+                Require(HasNonEmptyString(data, "option_id"), "option_id");
+                break;
+            case "rest.choose":
+                Require(HasNonEmptyString(data, "option_id"), "option_id");
+                break;
+            case "shop.remove_card":
+                Require(HasInteger(data, "cost"), "cost");
+                break;
+            case "choice.index":
+                if (!ScriptDecisionReader.TryGetOffered(data, out _, out _))
+                {
+                    AddError(
+                        issues,
+                        "script_choice_missing_offer",
+                        "choice.index requires data.offered with context and options so the driver can verify the live offer.",
+                        location);
+                }
+
+                Require(HasArray(data, "indexes"), "indexes");
+                break;
+            case "choice.cards":
+                ValidateScriptCardChoice(data, location, issues);
+                break;
+        }
+
+        if (missing.Count > 0)
+        {
+            AddError(
+                issues,
+                "script_missing_identity",
+                $"{entry.Kind} requires data.{string.Join(", data.", missing)}.",
+                location);
+        }
+    }
+
+    private static void ValidateScriptCardChoice(JsonElement data, string location, List<ValidationIssue> issues)
+    {
+        if (!data.TryGetProperty("cards", out JsonElement cards) || cards.ValueKind != JsonValueKind.Array)
+        {
+            AddError(issues, "script_choice_missing_fingerprint", "choice.cards requires a cards array.", location);
+            return;
+        }
+
+        string? choiceType = HasNonEmptyString(data, "choice_type") ? data.GetProperty("choice_type").GetString() : null;
+        foreach (JsonElement card in cards.EnumerateArray())
+        {
+            bool valid = card.ValueKind == JsonValueKind.Object && choiceType switch
+            {
+                "deck_card" => HasNonNegativeInteger(card, "deck_index") && HasObject(card, "fingerprint"),
+                "combat_card" => HasNonNegativeInteger(card, "combat_card_index") && HasObject(card, "fingerprint"),
+                _ => HasObject(card, "fingerprint") || HasNonEmptyString(card, "model_id"),
+            };
+            if (!valid)
+            {
+                AddError(
+                    issues,
+                    "script_choice_missing_fingerprint",
+                    "Every choice.cards entry requires a fingerprint, plus deck_index or combat_card_index for deck and combat choices.",
+                    location);
+                return;
+            }
+        }
+    }
+
+    private static bool HasObject(JsonElement parent, string propertyName) =>
+        parent.TryGetProperty(propertyName, out JsonElement value) && value.ValueKind == JsonValueKind.Object;
+
+    private static bool HasArray(JsonElement parent, string propertyName) =>
+        parent.TryGetProperty(propertyName, out JsonElement value) && value.ValueKind == JsonValueKind.Array;
+
+    private static bool IsStringArray(JsonElement parent, string propertyName) =>
+        HasArray(parent, propertyName)
+        && parent.GetProperty(propertyName).EnumerateArray().All(item => item.ValueKind == JsonValueKind.String);
 
     private static bool TryGetData(RunRecordEntry entry, out JsonElement data) =>
         entry.Payload.TryGetProperty("data", out data) && data.ValueKind == JsonValueKind.Object;

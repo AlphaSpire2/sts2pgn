@@ -20,6 +20,7 @@
     <Compile Include="../STS2PGN.Core/FormatConstants.cs" Link="Core/FormatConstants.cs" />
     <Compile Include="../STS2PGN.Core/Model/**/*.cs" Link="Core/Model/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="../STS2PGN.Core/Parsing/**/*.cs" Link="Core/Parsing/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../STS2PGN.Core/Scripting/**/*.cs" Link="Core/Scripting/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="../STS2PGN.Core/Serialization/**/*.cs" Link="Core/Serialization/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="../STS2PGN.Core/Validation/**/*.cs" Link="Core/Validation/%(RecursiveDir)%(Filename)%(Extension)" />
     <Reference Include="sts2">

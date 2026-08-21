@@ -1,5 +1,6 @@
 using System.Text;
 using STS2PGN.Model;
+using STS2PGN.Scripting;
 using STS2PGN.Validation;
 
 namespace STS2PGN.Serialization;
@@ -24,7 +25,9 @@ public static class Sts2PgnWriter
 
         if (options.ValidateBeforeWriting)
         {
-            Sts2PgnValidationResult validation = Sts2PgnValidator.Validate(record);
+            Sts2PgnValidationMode mode = options.ValidationMode
+                ?? (ScriptProfile.IsScript(record.Metadata) ? Sts2PgnValidationMode.Script : Sts2PgnValidationMode.Recording);
+            Sts2PgnValidationResult validation = Sts2PgnValidator.Validate(record, mode);
             if (!validation.IsValid)
             {
                 throw new Sts2PgnValidationException(validation);

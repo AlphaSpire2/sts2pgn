@@ -173,7 +173,7 @@ payload, exactly as it initializes from `run.start`:
 {
   "data": {
     "reloads": 1,
-    "recorder_version": "0.7.1",
+    "recorder_version": "0.8.0",
     "restored_pre_finished_room": false,
     "source_snapshot": { "schema_version": 16, "encoding": "sts2-save-json", "data": {} },
     "state": { "scope": "run.core" }
@@ -192,6 +192,80 @@ When no matching incomplete trace can be found or safely continued (missing file
 malformed record, changed game build or model hash), the recorder falls back to a new
 trace file: a normal `run.start` built from the restored state, followed by the same
 `run.resume` record marking the run as continued.
+
+## Decision-script profile
+
+A *decision script* is a `.sts2pgn` file written by a simulator (or by hand) that
+proposes a run: it says which decisions to make but carries no authoritative state. A
+playback driver executes it in the real game while the normal recorder writes an
+ordinary recording; that recording — never the script — is the conformance artifact.
+The profile adds no grammar and no comparison semantics; `FormatVersion` and
+`projection_version` are unchanged.
+
+Producer identity decides the profile:
+
+| Tag | Recording | Script |
+|---|---|---|
+| `RecorderVersion` | required | forbidden (`script_carries_recorder_version`) |
+| `Producer` | forbidden (`recording_carries_producer`) | required, `name/version` with a lowercase `[a-z0-9_-]` name, for example `spirefish/0.3.1` |
+
+No file carries both. A file with `Producer` is a proposal and is never an
+authoritative fixture.
+
+Required script tags: `Format`, `FormatVersion`, `Producer`, `Seed`, `Mode`,
+`Ascension`, `Players`, `GameVersion`, `GameCommit`, `ModelIdHash`. The driver compares
+the compatibility identity (`GameVersion`, `GameCommit`, `ModelIdHash`) with the live
+build and refuses a mismatch before starting anything. `Mode` must be `CUSTOM`
+(`script_mode_not_custom`): the custom run is the only workflow in which the game accepts
+a chosen seed. `RunId`, `StartedAt`, and `Result` are optional; when `Result` is present
+it must be `*`, and the terminal token must be `*` (`script_result_not_incomplete`).
+
+Records:
+
+- The first record is `run.start`. Its `data.state` must carry `acts[]` (`index`,
+  `model_id`; the acts the seed is expected to generate on this profile — the custom-run
+  lobby may override act 1, so the driver honors the script's first act when it names a
+  known act and requires every later act to match the seed) and
+  `players[0].unlocks` (`epochs`, `encounters_seen`, `number_of_runs`). The driver
+  verifies both against the live profile and refuses to start on a mismatch
+  (`script_missing_acts`, `script_missing_unlocks`, `script_invalid_unlocks`).
+  `source_snapshot`, the full projection, and the `run.start` observation are not
+  required.
+- Then come decision records in file order, using the existing record kinds and the
+  same semantic identity a recording carries: model IDs, `{combat_id, model_id}`
+  targets, and every positional index accompanied by its fingerprint
+  (`script_missing_identity`). Drivable kinds are `act.next`, `choice.cards`,
+  `choice.index`, `combat.discard_potion`, `combat.end_turn`, `combat.play_card`,
+  `combat.use_potion`, `event.advance`, `event.choose`, `map.choose`, `rest.choose`,
+  `reward.claim`, `reward.skip`, `room.proceed`, `shop.purchase`, `shop.remove_card`,
+  `treasure.choose_relic`, and `treasure.skip_relic`.
+- `choice.*` records must carry the offered options the producer expects (`offered` with
+  `context` and `options` on `choice.index`, `script_choice_missing_offer`; a
+  fingerprint plus `deck_index`/`combat_card_index` on every `choice.cards` entry,
+  `script_choice_missing_fingerprint`). The game-assigned `choice_id` is optional; the
+  driver answers whichever choice the game is currently asking. A `choice.*` record must
+  follow an operation that can suspend for it (`combat.play_card`, `combat.use_potion`,
+  `event.choose`, `reward.claim`, `rest.choose`, `shop.purchase`, `shop.remove_card`,
+  `treasure.choose_relic`) or another `choice.*` (`script_orphan_choice`).
+- `room.proceed` is only meaningful on a terminal rewards screen; proceeding from a rest
+  site, shop, or treasure room is presentation-only and never recorded.
+- `event.advance` is one record per dialogue page, as the recorder emits it.
+- Outcome records are allowed but ignored with a warning (`script_ignored_record`):
+  `state.observe`, `*.resolve`, `act.enter`, `room.enter`, `room.exit`.
+- Kinds without drivable identity are rejected (`script_unsupported_record`):
+  `run.finish`, `run.resume`, `choice.player`, `choice.unknown`, `game.unknown_action`,
+  `combat.undo_end_turn`, and `event.crystal_sphere.*` (the Crystal Sphere grid is
+  generated at run time, so it cannot be scripted).
+- `set_id` on reward records is the run's deterministic per-run counter and must match
+  the live game; the driver never remaps indexes, set IDs, or options.
+
+All shared grammar checks still apply in script mode (sequence numbering, actor slots,
+combat-target consistency, shop identity, card-reward offer indexes). Observation,
+digest, and projection checks apply only to observations that are actually present.
+
+`Sts2PgnValidator.Validate(record, Sts2PgnValidationMode.Script)` validates the
+profile; `sts2pgn validate --script` does the same from the command line. A minimal
+example is `examples/script-minimal.sts2pgn`.
 
 ## Action namespaces
 
@@ -301,7 +375,7 @@ duplicates that state, references sequence 1, and supplies its canonical digest.
       "rng": { "seed": 0, "counters": {} },
       "odds": {},
       "relic_grab_bag": {},
-      "unlocks": {},
+      "unlocks": { "epochs": [], "encounters_seen": [], "number_of_runs": 0 },
       "extra": {}
     }
   ],
@@ -325,7 +399,7 @@ Comparison rules for this scope are:
 - `players` is keyed by `slot`, although its wire representation preserves run order.
 - Decks, relics, potion slots, visited map coordinates, modifiers, and each relic grab-bag list are ordered.
 - RNG counter objects are keyed by their symbolic counter name and compared exactly.
-- Unlock epochs and seen encounters are serialized in ordinally sorted order because they are sets.
+- `unlocks` is the profile state the run was created with: `epochs` (revealed epoch IDs) and `encounters_seen` (encounter model IDs) are sets serialized in ordinally sorted order; `number_of_runs` is the profile's completed-run count and compares exactly.
 - Card, relic, enchantment, and modifier saved properties are name-sorted portable objects.
 - Odds are exact STS2 single-precision values encoded as canonical JSON numbers.
 - `rooms` and choice collections are explicitly empty and `combat` is `null` at a new-run boundary.
