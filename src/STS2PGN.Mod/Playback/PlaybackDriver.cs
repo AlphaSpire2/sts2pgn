@@ -47,9 +47,9 @@ internal sealed class PlaybackDriver
     private readonly TimeSpan _timeout;
     private readonly CancellationToken _cancellation;
     private readonly object _gate = new();
-    // Arrival ticks order recorder events. Settling is "an observation arrived after this
-    // decision was recorded": some completion observations (turn boundaries, end-turn
-    // flushes) reference the initiating decision's sequence, not the nested choice's.
+    // Arrival ticks order recorder events. Settling is "a completion boundary arrived after
+    // this decision was recorded": some observations (turn boundaries, end-turn flushes)
+    // reference the initiating decision's sequence, not the nested choice's.
     private readonly List<(long Tick, long Sequence, string Kind, JsonElement Data)> _recorded = [];
     private readonly List<(long Tick, long Sequence, string Context)> _settled = [];
     private long _tick;
@@ -70,10 +70,12 @@ internal sealed class PlaybackDriver
         RecorderService.LiveOfferRegistered += OnLiveOfferRegistered;
         try
         {
-            foreach (ScriptDecision decision in _script.Decisions)
+            for (int index = 0; index < _script.Decisions.Count; index++)
             {
+                ScriptDecision decision = _script.Decisions[index];
+                ScriptDecision? nextDecision = index + 1 < _script.Decisions.Count ? _script.Decisions[index + 1] : null;
                 _cancellation.ThrowIfCancellationRequested();
-                if (!await DriveAsync(decision))
+                if (!await DriveAsync(decision, nextDecision))
                 {
                     return;
                 }
@@ -94,7 +96,7 @@ internal sealed class PlaybackDriver
         }
     }
 
-    private async Task<bool> DriveAsync(ScriptDecision decision)
+    private async Task<bool> DriveAsync(ScriptDecision decision, ScriptDecision? nextDecision)
     {
         IDecisionDispatcher? dispatcher = Dispatchers.FirstOrDefault(candidate => candidate.Handles(decision.Kind));
         if (dispatcher is null)
@@ -192,14 +194,25 @@ internal sealed class PlaybackDriver
         {
             long recordedSequence = recorded.Value.Sequence;
             long recordedTick = recorded.Value.Tick;
+            bool reachedNestedChoice = false;
             bool settled = await PlaybackWait.TryUntilAsync(
-                () => HasSettledAfter(recordedTick) || !RecorderService.IsRecording,
+                () => HasSettledAfter(recordedTick)
+                    || (reachedNestedChoice = IsNextNestedChoiceReady(nextDecision))
+                    || !RecorderService.IsRecording,
                 _timeout,
                 _cancellation);
             if (!settled)
             {
                 _report.Stop(PlaybackStatus.GameError, PlaybackReasons.Timeout, $"{decision.Kind} was recorded as sequence {recordedSequence} but never settled", decision);
                 return false;
+            }
+
+            if (reachedNestedChoice)
+            {
+                // Hand-selection choices do not register a live offer, while deck grids do.
+                // Start the same presentation settle delay for both before the next loop
+                // presses holders on the newly opened screen.
+                _lastOfferAt = DateTime.UtcNow;
             }
         }
 
@@ -232,6 +245,17 @@ internal sealed class PlaybackDriver
         {
             GD.PrintErr($"[STS2PGN] Playback surface advance for {decision.Kind} threw: {exception.Message}");
         }
+    }
+
+    private static bool IsNextNestedChoiceReady(ScriptDecision? decision)
+    {
+        if (decision is not { IsChoice: true })
+        {
+            return false;
+        }
+
+        IDecisionDispatcher? dispatcher = Dispatchers.FirstOrDefault(candidate => candidate.Handles(decision.Kind));
+        return dispatcher is not null && SafeIsReady(dispatcher, decision);
     }
 
     private bool OfferSettleElapsed(ScriptDecision decision) =>
