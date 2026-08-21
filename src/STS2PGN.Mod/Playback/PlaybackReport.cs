@@ -95,6 +95,10 @@ internal sealed class PlaybackReport
     [JsonPropertyName("recording_path")]
     public string? RecordingPath { get; set; }
 
+    /// <summary>True when successful playback detached without ending the live run or recorder.</summary>
+    [JsonPropertyName("handed_off")]
+    public bool HandedOff { get; set; }
+
     /// <summary>Live profile unlocks after the run, so the next script can be generated from them.</summary>
     [JsonPropertyName("unlocks_after_run")]
     public PlaybackUnlocks? UnlocksAfterRun { get; set; }
@@ -158,7 +162,8 @@ internal sealed record PlaybackSummaryRow(
     [property: JsonPropertyName("reason")] string? Reason,
     [property: JsonPropertyName("stopped_at_sequence")] long? StoppedAtSequence,
     [property: JsonPropertyName("recording_path")] string? RecordingPath,
-    [property: JsonPropertyName("report_path")] string ReportPath);
+    [property: JsonPropertyName("report_path")] string ReportPath,
+    [property: JsonPropertyName("handed_off")] bool HandedOff);
 
 internal static class PlaybackReportWriter
 {
