@@ -245,7 +245,8 @@ Records:
   `script_choice_missing_fingerprint`). The game-assigned `choice_id` is optional; the
   driver answers whichever choice the game is currently asking. A `choice.*` record must
   follow an operation that can suspend for it (`combat.play_card`, `combat.use_potion`,
-  `event.choose`, `reward.claim`, `rest.choose`, `shop.purchase`, `shop.remove_card`,
+  `combat.end_turn` — the end-of-turn flush can ask which cards to keep — `event.choose`,
+  `reward.claim`, `rest.choose`, `shop.purchase`, `shop.remove_card`,
   `treasure.choose_relic`) or another `choice.*` (`script_orphan_choice`).
 - `room.proceed` is only meaningful on a terminal rewards screen; proceeding from a rest
   site, shop, or treasure room is presentation-only and never recorded.
