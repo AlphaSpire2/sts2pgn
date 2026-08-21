@@ -150,7 +150,14 @@ of [docs/format.md](docs/format.md) and `examples/script-minimal.sts2pgn`.
 
 ```bash
 dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll validate --script my-script.sts2pgn
+
+# Replay a recorded run through the driver: convert the recording into a script first
+dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll to-script my-run.sts2pgn --producer sts2pgn-tool/0.8.0
 ```
+
+A recording is never accepted as a script directly (the driver refuses it with
+`refused_at_start`); `to-script` strips it to decisions, swaps `RecorderVersion` for
+`Producer`, and sets `Mode CUSTOM`.
 
 The playback driver lives in the mod and executes scripts in the real game while the
 recorder records the session as a normal authoritative recording:

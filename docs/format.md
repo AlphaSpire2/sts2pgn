@@ -266,7 +266,11 @@ digest, and projection checks apply only to observations that are actually prese
 
 `Sts2PgnValidator.Validate(record, Sts2PgnValidationMode.Script)` validates the
 profile; `sts2pgn validate --script` does the same from the command line. A minimal
-example is `examples/script-minimal.sts2pgn`.
+example is `examples/script-minimal.sts2pgn`. `ScriptConverter.FromRecording` (CLI:
+`sts2pgn to-script <recording> --producer name/version`) turns a recording into a script
+that replays the same decisions: it drops observations, resolutions, lifecycle records,
+`run.finish`, the raw save snapshot, and provenance tags, replaces `RecorderVersion` with
+`Producer`, and sets `Mode` to `CUSTOM`.
 
 ## Action namespaces
 
