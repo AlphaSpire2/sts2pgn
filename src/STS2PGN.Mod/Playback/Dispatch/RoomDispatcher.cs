@@ -5,6 +5,7 @@ using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -86,8 +87,25 @@ internal sealed class RoomDispatcher : IDecisionDispatcher
                 DialogueHitbox()!.ForceClick();
                 break;
             case "rest.choose":
-                _ = RunManager.Instance.RestSiteSynchronizer.ChooseLocalOption(RestOptionIndex(decision));
+            {
+                // Click the option's button: only NRestSiteButton.SelectOption calls
+                // NRestSiteRoom.AfterSelectingOption, which hides the choices and enables the
+                // Proceed button. A direct synchronizer call leaves the room without a way out.
+                int index = RestOptionIndex(decision);
+                RestSiteOption option = RunManager.Instance.RestSiteSynchronizer.GetLocalOptions()[index];
+                NRestSiteButton? button = LiveGame.FindAll<NRestSiteButton>(NRestSiteRoom.Instance)
+                    .FirstOrDefault(candidate => ReferenceEquals(candidate.Option, option));
+                if (LiveGame.IsUsable(button))
+                {
+                    button!.ForceClick();
+                }
+                else
+                {
+                    _ = RunManager.Instance.RestSiteSynchronizer.ChooseLocalOption(index);
+                }
+
                 break;
+            }
             case "shop.purchase":
             {
                 MerchantInventory inventory = LocalInventory()!;
