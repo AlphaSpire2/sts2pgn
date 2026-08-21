@@ -23,13 +23,20 @@ public sealed record ScriptUnlocks(
     IReadOnlyList<string> EncountersSeen,
     int NumberOfRuns)
 {
-    /// <summary>Compares as sets (epochs, encounters) plus an exact run count; explains the first difference.</summary>
+    /// <summary>True for a profile that has never completed a run; the only distinction the game makes.</summary>
+    public bool IsFirstRun => NumberOfRuns == 0;
+
+    /// <summary>
+    /// Compares epochs and encounters as sets, and the run count only as "first run or not":
+    /// the game consults <c>NumberOfRuns</c> solely through <c>== 0</c> checks (first-run rewards,
+    /// treasure, act and map odds), so any positive count is gameplay-equivalent.
+    /// </summary>
     public bool Matches(ScriptUnlocks other, out string difference)
     {
         ArgumentNullException.ThrowIfNull(other);
-        if (NumberOfRuns != other.NumberOfRuns)
+        if (IsFirstRun != other.IsFirstRun)
         {
-            difference = $"number_of_runs: expected {NumberOfRuns}, live {other.NumberOfRuns}";
+            difference = $"number_of_runs: expected {(IsFirstRun ? "a first run (0)" : $"a later run ({NumberOfRuns})")}, live {other.NumberOfRuns}";
             return false;
         }
 

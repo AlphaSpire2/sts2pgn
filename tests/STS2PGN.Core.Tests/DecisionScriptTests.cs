@@ -87,8 +87,10 @@ public sealed class DecisionScriptTests
         Assert.StartsWith("encounters_seen:", difference);
         Assert.Contains("extra live [Y]", difference);
 
-        Assert.False(expected.Matches(new ScriptUnlocks(["A", "B"], ["X"], 3), out difference));
+        Assert.True(expected.Matches(new ScriptUnlocks(["A", "B"], ["X"], 57), out _), "any positive run count is equivalent");
+        Assert.False(expected.Matches(new ScriptUnlocks(["A", "B"], ["X"], 0), out difference));
         Assert.StartsWith("number_of_runs:", difference);
+        Assert.False(new ScriptUnlocks([], [], 0).Matches(new ScriptUnlocks([], [], 1), out _));
     }
 
     [Fact]
