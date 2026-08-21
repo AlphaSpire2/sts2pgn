@@ -80,6 +80,27 @@ PowerShell users can run:
 
 `build.ps1` also reads `STS2_GAME_DIR`. Its output is `out/STS2_PGN/`.
 
+## Copy an unmodded save to the modded profile
+
+STS2 keeps unmodded and modded save data in separate profile directories. With the game
+closed, preview a one-way copy of profile 1 with:
+
+```powershell
+./copy-save-to-modded.ps1 -DryRun
+```
+
+Run the same command without `-DryRun` to perform the copy. The script auto-detects the
+platform account when there is exactly one candidate, copies only new or changed files,
+preserves destination-only mod data, and backs up the existing modded `saves` directory
+before making changes. Select a different profile or disambiguate multiple accounts with:
+
+```powershell
+./copy-save-to-modded.ps1 -AccountId 76561198000000000 -ProfileId 2 -DryRun
+```
+
+Use `Get-Help ./copy-save-to-modded.ps1 -Detailed` for path overrides and the complete
+parameter reference. Progress and active-run files are replaced rather than merged.
+
 ## Inspect traces from the command line
 
 The `sts2pgn` CLI is a consumer of the portable core — it never ships with the mod and
