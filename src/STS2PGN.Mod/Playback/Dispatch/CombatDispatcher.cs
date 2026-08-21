@@ -31,10 +31,13 @@ internal sealed class CombatDispatcher : IDecisionDispatcher
             return !CombatManager.Instance.IsInProgress;
         }
 
+        // Phase must be Play: CombatManager.StartCombatInternal sets IsInProgress (and clears
+        // IsStarting) with the executor paused before StartTurn draws the opening hand, so
+        // "player side + idle" alone is true while the hand is still empty.
         CombatState? combat = LiveGame.Combat;
         return combat is not null
             && combat.CurrentSide == CombatSide.Player
-            && me.PlayerCombatState is not null
+            && me.PlayerCombatState is { Phase: PlayerTurnPhase.Play }
             && !CombatManager.Instance.IsPlayerReadyToEndTurn(me)
             && !CombatManager.Instance.IsStarting
             && !CombatManager.Instance.IsOverOrEnding
