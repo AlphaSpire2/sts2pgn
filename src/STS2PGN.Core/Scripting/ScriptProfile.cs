@@ -55,6 +55,9 @@ public static class ScriptProfile
         "combat.use_potion",
         "event.advance",
         "event.choose",
+        "event.crystal_sphere.click",
+        "event.crystal_sphere.proceed",
+        "event.crystal_sphere.set_tool",
         "map.choose",
         "rest.choose",
         "reward.claim",
@@ -70,6 +73,7 @@ public static class ScriptProfile
     public static readonly IReadOnlySet<string> IgnoredKinds = new HashSet<string>(StringComparer.Ordinal)
     {
         "act.enter",
+        "event.crystal_sphere.start",
         "rest.resolve",
         "reward.resolve",
         "room.enter",
@@ -85,10 +89,6 @@ public static class ScriptProfile
         "choice.player",
         "choice.unknown",
         "combat.undo_end_turn",
-        "event.crystal_sphere.click",
-        "event.crystal_sphere.proceed",
-        "event.crystal_sphere.set_tool",
-        "event.crystal_sphere.start",
         "game.unknown_action",
         "run.finish",
         "run.resume",

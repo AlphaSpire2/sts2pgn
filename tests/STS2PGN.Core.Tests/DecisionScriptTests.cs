@@ -44,15 +44,21 @@ public sealed class DecisionScriptTests
             .AppendJson("run.start", TestRecordFactory.ScriptRunStart)
             .AppendJson("map.choose", TestRecordFactory.ScriptMapChoose)
             .AppendJson("room.enter", "{\"data\":{}}")
+            .AppendJson("event.crystal_sphere.start", "{\"actor\":\"p0\",\"data\":{}}")
+            .AppendJson("event.crystal_sphere.set_tool", "{\"actor\":\"p0\",\"data\":{\"tool\":\"small\"}}")
+            .AppendJson("event.crystal_sphere.click", "{\"actor\":\"p0\",\"data\":{\"x\":3,\"y\":7,\"tool\":\"small\",\"remaining_before\":4}}")
+            .AppendJson("event.crystal_sphere.proceed", "{\"actor\":\"p0\",\"data\":{}}")
             .AppendJson("rest.choose", "{\"actor\":\"p0\",\"data\":{\"option_id\":\"rest\"}}")
-            .AppendJson("rest.resolve", "{\"actor\":\"p0\",\"data\":{\"action_sequence\":4,\"success\":true}}")
+            .AppendJson("rest.resolve", "{\"actor\":\"p0\",\"data\":{\"action_sequence\":8,\"success\":true}}")
             .Build();
 
         DecisionScript script = DecisionScript.FromRecord(record);
 
-        Assert.Equal(["map.choose", "rest.choose"], script.Decisions.Select(decision => decision.Kind));
-        Assert.Equal([0, 1], script.Decisions.Select(decision => decision.Ordinal));
-        Assert.Equal([2L, 4L], script.Decisions.Select(decision => decision.Sequence));
+        Assert.Equal(
+            ["map.choose", "event.crystal_sphere.set_tool", "event.crystal_sphere.click", "event.crystal_sphere.proceed", "rest.choose"],
+            script.Decisions.Select(decision => decision.Kind));
+        Assert.Equal([0, 1, 2, 3, 4], script.Decisions.Select(decision => decision.Ordinal));
+        Assert.Equal([2L, 5L, 6L, 7L, 8L], script.Decisions.Select(decision => decision.Sequence));
     }
 
     [Fact]

@@ -720,6 +720,15 @@ public static class Sts2PgnValidator
                 Require(HasNonNegativeInteger(data, "option_index"), "option_index");
                 Require(HasNonEmptyString(data, "option_id"), "option_id");
                 break;
+            case "event.crystal_sphere.click":
+                Require(HasNonNegativeInteger(data, "x"), "x");
+                Require(HasNonNegativeInteger(data, "y"), "y");
+                Require(HasCrystalSphereTool(data), "tool");
+                Require(HasNonNegativeInteger(data, "remaining_before"), "remaining_before");
+                break;
+            case "event.crystal_sphere.set_tool":
+                Require(HasCrystalSphereTool(data), "tool");
+                break;
             case "rest.choose":
                 Require(HasNonEmptyString(data, "option_id"), "option_id");
                 break;
@@ -819,6 +828,11 @@ public static class Sts2PgnValidator
         && parent.TryGetProperty(propertyName, out JsonElement value)
         && value.ValueKind == JsonValueKind.String
         && !string.IsNullOrWhiteSpace(value.GetString());
+
+    private static bool HasCrystalSphereTool(JsonElement data) =>
+        data.TryGetProperty("tool", out JsonElement tool)
+        && tool.ValueKind == JsonValueKind.String
+        && tool.GetString() is "small" or "big";
 
     private static bool IsPlayerSlot(string value) =>
         value.Length >= 2

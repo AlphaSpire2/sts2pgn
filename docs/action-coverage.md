@@ -63,7 +63,7 @@ The reference implementations in `../sts2mcp/McpMod.Actions.cs` cover card grids
 |---|---|---|---|
 | `event.choose` | `Core.Multiplayer.Game/EventSynchronizer.cs`: `ChooseLocalOption`, `PlayerVoteChanged` | Patch/observe the accepted option; store index plus event and option semantic IDs/text hash. | Direct/Event |
 | `event.advance` | `NAncientEventLayout.OnDialogueHitboxClicked` | Record each progression-bearing dialogue advance. | Direct |
-| `event.crystal_sphere.start` | `CrystalSphereMinigame` constructor | Record and observe the complete generated grid, item list, cell-to-item mapping, and post-generation RNG seed/counter because the event is nondeterministic. | Direct |
+| `event.crystal_sphere.start` | `CrystalSphereMinigame` constructor | Observe the complete deterministically generated grid, item list, cell-to-item mapping, and post-generation RNG seed/counter for state conformance; it is not simulator input. | Direct |
 | `event.crystal_sphere.set_tool` | `CrystalSphereMinigame.SetTool` | Record the semantic `small` or `big` tool and observe the updated full minigame state. | Direct |
 | `event.crystal_sphere.click` | `CrystalSphereMinigame.CellClicked` | Record logical cell coordinates, active tool, and divinations remaining before the click; await cell clearing/reward effects before observing the updated board. | Direct |
 | `event.crystal_sphere.proceed` | `NCrystalSphereScreen.OnProceedButtonPressed` | Record the explicit progression action without duplicating generic room proceed. | Direct |
@@ -130,6 +130,9 @@ live game before acting, the call it makes, and the recorder context that settle
 | `room.proceed` | terminal rewards screen, or the treasure room's enabled Proceed button after relic picking | not Crystal Sphere | `RunManager.ProceedFromTerminalRewardsScreen()` (treasure: force-click its Proceed button, which calls the same) | `reward.settled` / map open |
 | `event.choose` | event room, options shown | `option_index` + `option_id`, unlocked | `EventSynchronizer.ChooseLocalOption(index)` | `event.choice.settled` / `room.enter` / `choice.offered` |
 | `event.advance` | ancient dialogue shown | `event_id` | dialogue hitbox click | `event.dialogue.settled` |
+| `event.crystal_sphere.set_tool` | Crystal Sphere screen open, minigame unfinished | semantic `small` or `big` tool is available | force-click the matching divination button | `event.crystal_sphere.tool` |
+| `event.crystal_sphere.click` | Crystal Sphere screen open, minigame unfinished | logical `(x,y)` is a hidden live cell; `remaining_before` matches; `tool` is available | select the click's carried tool when needed, then force-click the live cell | `event.crystal_sphere.click` |
+| `event.crystal_sphere.proceed` | Crystal Sphere's enabled Proceed button is visible after rewards finish | — | force-click the real Proceed button | decision recorded; the following map decision waits for map open |
 | `rest.choose` | rest site options shown | enabled option with `option_id` | force-click the option's `NRestSiteButton` (the only path that calls `NRestSiteRoom.AfterSelectingOption`, which enables the Proceed button); `ChooseLocalOption(index)` only as fallback | `rest.settled`, or readiness of the immediately following nested choice |
 | `shop.purchase` | merchant inventory open (the driver first clicks the unrecorded merchant button to open it) | entry at `inventory_index`/`entry_index`, type, group, model, stocked, affordable | `MerchantEntry.OnTryPurchaseWrapper(inventory)` | `shop.purchase.settled` |
 | `shop.remove_card` | merchant inventory open (opened the same way) | removal entry stocked/affordable, `cost` | `OnTryPurchaseWrapper` on the removal entry | readiness of the immediately following nested choice, then `shop.remove_card.settled` |
@@ -137,7 +140,8 @@ live game before acting, the call it makes, and the recorder context that settle
 | `treasure.choose_relic` / `skip_relic` | chest opened and its relic holders showing (the driver first clicks the unrecorded chest, as a player would; picking before the chest opens is accepted by the synchronizer but never obtains the relic or re-enables Proceed) | `offered_relics` equals `CurrentRelics`; `relic_index` model | force-click the `NTreasureRoomRelicHolder` (→ `PickRelicLocally(index)`) / `SkipRelicLocally` | `action.settled` |
 | `choice.index` | a registered choice offer is pending and its screen is open | offer `context` and every option fingerprint/option id equal the script's `offered` | complete the open selection screen (press the live holders, confirm/skip) | decision recorded, then the parent's settle |
 | `choice.cards` | as above | deck/hand card by index + fingerprint; registered offer if any | complete the open selection screen | decision recorded, then the parent's settle |
-| `choice.player`, `choice.unknown`, `game.unknown_action`, `combat.undo_end_turn`, `event.crystal_sphere.*` | — | — | rejected by script validation; runtime backstop reports `unsupported_record` | — |
+| `event.crystal_sphere.start` | — | generated board is observational, not simulator input | ignored by the script driver | — |
+| `choice.player`, `choice.unknown`, `game.unknown_action`, `combat.undo_end_turn` | — | — | rejected by script validation; runtime backstop reports `unsupported_record` | — |
 
 Nested choices are never submitted through `PlayerChoiceSynchronizer.SyncLocalChoice`:
 `CardSelectCmd`, `CardReward`, and `RelicSelectCmd` await their screen and call it

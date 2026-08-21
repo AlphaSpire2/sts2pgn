@@ -17,6 +17,7 @@ internal sealed class PlaybackDriver
     private static readonly IReadOnlyList<IDecisionDispatcher> Dispatchers =
     [
         new CombatDispatcher(),
+        new CrystalSphereDispatcher(),
         new MapDispatcher(),
         new RoomDispatcher(),
         new RewardDispatcher(),
@@ -30,6 +31,8 @@ internal sealed class PlaybackDriver
         ["combat.use_potion"] = ["potion_slot", "potion_model", "target"],
         ["combat.discard_potion"] = ["potion_slot", "potion_model"],
         ["combat.end_turn"] = ["turn"],
+        ["event.crystal_sphere.click"] = ["x", "y", "tool", "remaining_before"],
+        ["event.crystal_sphere.set_tool"] = ["tool"],
         ["map.choose"] = ["col", "row"],
         ["event.choose"] = ["option_index", "option_id"],
         ["rest.choose"] = ["option_id"],
@@ -115,9 +118,12 @@ internal sealed class PlaybackDriver
         bool ready = await PlaybackWait.TryUntilAsync(
             () =>
             {
-                // Nested choices are asked while the initiating action is still executing, so they
-                // cannot wait for the executor to go idle; an open modal still blocks them.
-                bool gate = decision.IsChoice ? LiveGame.NoModalOpen : LiveGame.IsIdle;
+                // Nested choices and the Crystal Sphere minigame are asked while the initiating
+                // event action is still executing, so they cannot wait for the executor to go idle;
+                // an open modal still blocks them.
+                bool insideRunningAction = decision.IsChoice
+                    || decision.Kind.StartsWith("event.crystal_sphere.", StringComparison.Ordinal);
+                bool gate = insideRunningAction ? LiveGame.NoModalOpen : LiveGame.IsIdle;
                 if (gate && SafeIsReady(dispatcher, decision))
                 {
                     return OfferSettleElapsed(decision);
