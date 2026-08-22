@@ -174,7 +174,7 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
                 bool any = false;
                 foreach (CardModel card in selected)
                 {
-                    NGridCardHolder holder = grid.CurrentlyDisplayedCardHolders.First(candidate => ReferenceEquals(candidate.CardModel, card));
+                    NGridCardHolder holder = await MaterializeGridHolderAsync(grid, cards, card);
                     grid.EmitSignal(NCardGrid.SignalName.HolderPressed, holder);
                     any = true;
                 }
@@ -198,6 +198,67 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
             default:
                 throw new InvalidOperationException($"No selection screen handler for offer context '{offer.Context}' on {screen.GetType().Name}.");
         }
+    }
+
+    private static async Task<NGridCardHolder> MaterializeGridHolderAsync(
+        NCardGrid grid,
+        IReadOnlyList<CardModel> cards,
+        CardModel card)
+    {
+        int targetIndex = IndexOfReference(cards, card);
+        if (targetIndex < 0)
+        {
+            throw new InvalidOperationException("A scripted card is not present in the selection grid.");
+        }
+
+        Control scrollContainer = grid.GetNodeOrNull<Control>("%ScrollContainer")
+            ?? throw new InvalidOperationException("The selection grid has no scroll container.");
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            List<NGridCardHolder> displayed = grid.CurrentlyDisplayedCardHolders
+                .Where(holder => holder.Visible)
+                .ToList();
+            NGridCardHolder? match = displayed.FirstOrDefault(holder => ReferenceEquals(holder.CardModel, card));
+            if (match is not null)
+            {
+                return match;
+            }
+
+            int[] displayedIndexes = displayed
+                .Select(holder => IndexOfReference(cards, holder.CardModel))
+                .Where(index => index >= 0)
+                .ToArray();
+            if (displayedIndexes.Length == 0)
+            {
+                await Task.Delay(PlaybackWait.PollInterval);
+                continue;
+            }
+
+            float direction = targetIndex < displayedIndexes.Min() ? 1f : -1f;
+            float distance = Math.Max(grid.Size.Y * 0.75f, 300f);
+            grid.SetScrollPosition(scrollContainer.Position.Y + direction * distance);
+
+            // NCardGrid virtualizes large decks. SetScrollPosition moves the container immediately,
+            // so explicitly ask it to refresh the sliding holder window before polling again.
+            grid.Call(NCardGrid.MethodName.AllocateCardHolders);
+            await Task.Delay(PlaybackWait.PollInterval);
+        }
+
+        throw new PlaybackTimeoutException($"Timed out materializing selection-grid card at option index {targetIndex}.");
+    }
+
+    private static int IndexOfReference(IReadOnlyList<CardModel> cards, CardModel card)
+    {
+        for (int index = 0; index < cards.Count; index++)
+        {
+            if (ReferenceEquals(cards[index], card))
+            {
+                return index;
+            }
+        }
+
+        return -1;
     }
 
     private static bool IsHandSelection(ScriptDecision decision) =>
