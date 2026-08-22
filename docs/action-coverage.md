@@ -121,7 +121,7 @@ live game before acting, the call it makes, and the recorder context that settle
 
 | Script kind | Ready when | Verified against | Submit call | Settles on |
 |---|---|---|---|---|
-| `combat.play_card` | combat in progress, player side in the Play phase (`PlayerCombatState.Phase`), queue idle | hand card by `combat_card_index` + `card` fingerprint; target creature `combat_id` + `model_id` | `ActionQueueSynchronizer.RequestEnqueue(new PlayCardAction(card, target))` | `action.settled`, or readiness of the immediately following nested choice |
+| `combat.play_card` | combat in progress, player side in the Play phase (`PlayerCombatState.Phase`), queue idle | hand card by `combat_card_index` + `card` fingerprint; target creature `combat_id` + `model_id` | `ActionQueueSynchronizer.RequestEnqueue(new PlayCardAction(card, target))` | `action.settled`, or readiness of the immediately following nested choice (including combat-pile grids such as Hologram) |
 | `combat.use_potion` | idle | `potion_slot` model + target | `PotionModel.EnqueueManualUse(target)` | `action.settled` |
 | `combat.discard_potion` | idle | `potion_slot` model | discard action enqueue | `action.settled` |
 | `combat.end_turn` | player side, not yet ended, `turn` matches | turn number | `PlayerCmd.EndTurn(player, canBackOut: false)` (recorded by `DirectEndTurnPatch`) | `combat.player_turn.start` / reward or run-end settle |
