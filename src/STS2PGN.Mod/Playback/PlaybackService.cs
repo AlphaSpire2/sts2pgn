@@ -16,6 +16,7 @@ internal static class PlaybackService
     private static CancellationTokenSource? _cancellation;
 
     public static bool IsActive => _active is not null;
+    public static bool IsHandoffActive => _active?.HandoffWhenDone == true;
 
     /// <summary>Called once from the mod initializer. No-op unless <c>--sts2pgn-script</c> was given.</summary>
     public static void StartFromCommandLine()
@@ -146,9 +147,9 @@ internal static class PlaybackService
             await PlaybackRunStarter.StartAsync(preflight, cancellation);
             runStarted = true;
             report.RecordingPath = RecorderService.CurrentRecordingPath;
-            if (report.RecordingPath is null)
+            if (!RecorderService.IsRecording)
             {
-                report.Stop(PlaybackStatus.GameError, PlaybackReasons.Exception, "The recorder did not open a recording for the playback run.");
+                report.Stop(PlaybackStatus.GameError, PlaybackReasons.Exception, "The recorder did not start for the playback run.");
                 return report;
             }
 

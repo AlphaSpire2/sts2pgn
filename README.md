@@ -140,7 +140,9 @@ The output directory is configured in `config.json`, installed beside `STS2_PGN.
 
 ```json
 {
-  "output_directory": "sts2pgn"
+  "output_directory": "sts2pgn",
+  "playback_timeout_seconds": 30,
+  "record_playback_runs": true
 }
 ```
 
@@ -149,8 +151,12 @@ The output directory is configured in `config.json`, installed beside `STS2_PGN.
 - A Godot path such as `user://my-replays` is converted to its native OS path.
 - A missing or invalid configuration falls back to the profile-scoped `sts2pgn` directory and logs the reason.
 
-`playback_timeout_seconds` (optional, default 30) bounds how long the playback driver waits
-for any single step.
+- `playback_timeout_seconds` bounds how long the playback driver waits for any single step.
+- `record_playback_runs` controls whether `sts2pgn drive` and command-line playback write
+  a new `.sts2pgn` trace. Set it to `false` to drive and validate through the recorder
+  without creating a trace file; playback reports are still written and their
+  `recording_path` field is omitted. `sts2pgn handoff` always records because control returns to
+  the player with that recording active.
 
 The configuration is read when the mod initializes, so restart the game after changing it.
 
@@ -182,7 +188,7 @@ script file explicitly, for example to hand-edit it. Either way the conversion s
 recording to decisions, swaps `RecorderVersion` for `Producer`, and sets `Mode CUSTOM`.
 
 The playback driver lives in the mod and executes scripts in the real game while the
-recorder records the session as a normal authoritative recording:
+recorder observes the session and, by default, writes a normal authoritative recording:
 
 ```bash
 # One script, a directory of scripts, or a .txt list (one path per line); quits with an exit code

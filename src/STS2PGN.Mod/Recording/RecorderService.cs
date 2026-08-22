@@ -16,6 +16,7 @@ using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using STS2PGN.Model;
+using STS2PGN.Mod.Playback;
 
 namespace STS2PGN.Mod.Recording;
 
@@ -43,7 +44,7 @@ internal static class RecorderService
     private static PendingResume? _pendingResume;
     private static readonly Dictionary<(ulong PlayerId, uint ChoiceId), LiveChoiceOffer> LiveChoiceOffers = [];
 
-    /// <summary>Raised after a record was durably appended: (sequence, kind, data object as passed to the recorder).</summary>
+    /// <summary>Raised after a record was accepted: (sequence, kind, data object as passed to the recorder).</summary>
     public static event Action<long, string, object?>? Recorded;
 
     /// <summary>Raised after a state observation was appended: (observed sequence, completion context).</summary>
@@ -494,10 +495,13 @@ internal static class RecorderService
         try
         {
             _state = state;
-            _session = resume is not null
+            bool persist = !PlaybackService.IsActive
+                || PlaybackService.IsHandoffActive
+                || _config.RecordPlaybackRuns;
+            _session = persist && resume is not null
                 ? RecordingSession.TryResume(state, _config, resume.Save)
                 : null;
-            _session ??= RecordingSession.Start(state, _config);
+            _session ??= RecordingSession.Start(state, _config, persist);
             RoomStack.Clear();
             SeedRoomStack(state);
 
@@ -527,9 +531,11 @@ internal static class RecorderService
                 RecordResume(_session, resume);
             }
 
-            GD.Print(_session.IsContinuation
-                ? $"[STS2PGN] Continuing trace {_session.Path}"
-                : $"[STS2PGN] Recording to {_session.Path}");
+            GD.Print(_session.Path is null
+                ? "[STS2PGN] Playback recorder active without writing a trace (record_playback_runs is false)"
+                : _session.IsContinuation
+                    ? $"[STS2PGN] Continuing trace {_session.Path}"
+                    : $"[STS2PGN] Recording to {_session.Path}");
         }
         catch (Exception exception)
         {

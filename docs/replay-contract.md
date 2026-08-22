@@ -38,11 +38,14 @@ The simulator adapter must:
 
 The playback driver (shipped inside the STS2_PGN mod, `Playback/`) executes a
 *decision script* (see the decision-script profile in `docs/format.md`) in the real
-game while the normal recorder records the session. A script is a proposal produced by a
-simulator; the recording the driver produces is the conformance artifact and is replayed
-back through the simulator's comparator. Divergences are therefore caught twice: at
-drive time (the game offers something other than the script expects) and at replay time
-(observation mismatch). The real game stays the oracle; a script never is.
+game while the normal recorder observes the session and, by default, writes it to disk. A
+script is a proposal produced by a simulator; the recording the driver produces is the
+conformance artifact and is replayed back through the simulator's comparator. Divergences
+are therefore caught twice: at drive time (the game offers something other than the script
+expects) and at replay time (observation mismatch). The real game stays the oracle; a
+script never is. With `record_playback_runs: false`, ordinary drive sessions still pass
+through the recorder so drive-time verification works, but no `.sts2pgn` file is created
+and replay-time comparison is intentionally unavailable. Reports are still written.
 
 Launch:
 
@@ -73,7 +76,9 @@ Per script, in order:
 2. **Start the run** through the API the custom-run screen uses
    (`NGame.StartNewSingleplayerRun(..., GameMode.Custom, ...)`), with `shouldSave: true`
    so the recorder's save/resume path and `GameStartTime` header match normal play. The
-   recorder opens an ordinary recording (`RecorderVersion`, never `Producer`).
+   recorder opens an ordinary recording (`RecorderVersion`, never `Producer`), or a
+   transient non-file-backed recording when `record_playback_runs` is false. Handoff
+   always opens a file-backed recording regardless of this setting.
 3. **Drive, one decision at a time:** *wait* until the game is idle and the record's
    surface is present (no running action, empty queue, no modal, the expected screen or
    phase; while waiting, the driver performs presentation-only steps the recorder never
@@ -98,7 +103,8 @@ Reports are written to the recorder's `output_directory`:
 - `<script-name>.playback.json`: `status` (`completed`, `refused_at_start`,
   `stopped_at_record`, `game_error`), `reason`, `message`, `stopped_at_sequence`,
   `stopped_at_decision`, `kind`, `expected`, `offered`, `precondition_failures`,
-  `decisions_total`/`decisions_completed`, `recording_path`, `handed_off`, optional
+  `decisions_total`/`decisions_completed`, optional `recording_path` (omitted when playback
+  recording is disabled), `handed_off`, optional
   `unlocks_after_run`, and timestamps. `unlocks_after_run` is omitted on handoff because
   the run is still in progress.
 - `playback-summary.json`: one row per script plus `exit_code`: `0` all completed, `3`

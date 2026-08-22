@@ -91,7 +91,7 @@ internal sealed class PlaybackReport
     [JsonPropertyName("decisions_completed")]
     public int DecisionsCompleted { get; set; }
 
-    /// <summary>Path of the authoritative recording the recorder wrote for this session.</summary>
+    /// <summary>Path of the authoritative recording, or null for a transient playback recording.</summary>
     [JsonPropertyName("recording_path")]
     public string? RecordingPath { get; set; }
 
