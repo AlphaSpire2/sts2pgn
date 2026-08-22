@@ -24,7 +24,8 @@ internal sealed class RecordingSession : IDisposable
     private readonly Sts2PgnStreamWriter _writer;
     private bool _disposed;
 
-    public string Path { get; }
+    /// <summary>The persisted trace path, or null for a playback-only transient session.</summary>
+    public string? Path { get; }
 
     /// <summary>
     /// The anchor for the first observation: the run.start sequence for a new trace,
@@ -38,7 +39,7 @@ internal sealed class RecordingSession : IDisposable
     private RecordingSession(
         RunState state,
         Dictionary<ulong, string> playerSlots,
-        string path,
+        string? path,
         IDisposable streamResources,
         Sts2PgnStreamWriter writer,
         bool isContinuation)
@@ -51,7 +52,7 @@ internal sealed class RecordingSession : IDisposable
         IsContinuation = isContinuation;
     }
 
-    public static RecordingSession Start(RunState state, RecorderConfig config)
+    public static RecordingSession Start(RunState state, RecorderConfig config, bool persistToDisk = true)
     {
         ArgumentNullException.ThrowIfNull(config);
         DateTimeOffset startedAt = DateTimeOffset.UtcNow;
@@ -60,11 +61,24 @@ internal sealed class RecordingSession : IDisposable
 
         SerializableRun save = RunManager.Instance.ToSave(null);
         RunMetadata metadata = BuildMetadata(state, playerSlots, runId, startedAt, save.StartTime);
+        if (!persistToDisk)
+        {
+            Sts2PgnStreamWriter transientWriter = new(TextWriter.Null, metadata);
+            RecordingSession transientSession = new(
+                state,
+                playerSlots,
+                path: null,
+                TextWriter.Null,
+                transientWriter,
+                isContinuation: false);
+            transientSession.RecordRunStart(save);
+            return transientSession;
+        }
+
         string fileName = $"{startedAt:yyyyMMdd-HHmmss}-{runId:N}{FormatConstants.FileExtension}";
         string outputDirectory = config.ResolveOutputDirectory();
         Directory.CreateDirectory(outputDirectory);
         string path = System.IO.Path.Combine(outputDirectory, fileName);
-
         FileStream file = new(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
         try
         {
@@ -206,7 +220,10 @@ internal sealed class RecordingSession : IDisposable
             _writer.Complete(result);
             _writer.Dispose();
             _streamResources.Dispose();
-            Sts2PgnFileFinalizer.FinalizeResultHeader(Path, result);
+            if (Path is not null)
+            {
+                Sts2PgnFileFinalizer.FinalizeResultHeader(Path, result);
+            }
         }
     }
 
