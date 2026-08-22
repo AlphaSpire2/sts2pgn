@@ -90,13 +90,21 @@ closed, preview a one-way copy of profile 1 with:
 ```
 
 Run the same command without `-DryRun` to perform the copy. The script auto-detects the
-platform account when there is exactly one candidate, copies only new or changed files,
+platform account when there is exactly one candidate, copies `progress.save` by default,
 preserves destination-only mod data, and backs up the existing modded `saves` directory
-before making changes. Select a different profile or disambiguate multiple accounts with:
+before making changes. It retains the target timestamp when replacing an existing file
+because STS2's Steam Cloud startup sync otherwise restores the older cloud contents.
+Select a different profile or disambiguate multiple accounts with:
 
 ```powershell
 ./copy-save-to-modded.ps1 -AccountId 76561198000000000 -ProfileId 2 -DryRun
 ```
+
+Pass `-AllSaveFiles` to also copy active runs, preferences, history, backups, and other
+files beneath the unmodded `saves` directory. This broader mode is opt-in because Steam
+Cloud can remove a newly created modded file when no remote counterpart exists; the script
+warns when this applies. Disable Steam Cloud before launching if a source-only
+`current_run.save` or new history file must survive the first startup.
 
 Use `Get-Help ./copy-save-to-modded.ps1 -Detailed` for path overrides and the complete
 parameter reference. Progress and active-run files are replaced rather than merged.

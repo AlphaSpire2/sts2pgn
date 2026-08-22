@@ -3,15 +3,25 @@
     Copies an unmodded Slay the Spire 2 profile's save data into its modded profile.
 
 .DESCRIPTION
-    Discovers the selected STS2 account/profile, compares every file beneath the
-    unmodded saves directory with the corresponding modded file, and copies only
-    new or changed files. Destination-only files are preserved.
+    Discovers the selected STS2 account/profile and copies its progress.save into
+    the corresponding modded profile. Use -AllSaveFiles to include active runs,
+    preferences, run history, backups, and any other files beneath the unmodded
+    saves directory. Destination-only files are preserved.
+
+    Only new or changed files are copied. When replacing an existing modded file,
+    its original modification time is retained so STS2's timestamp-based Steam
+    Cloud sync does not immediately restore stale contents.
 
     Before a real copy, an existing modded saves directory is backed up beneath
     <SaveRoot>/save-copy-backups. Run this script while STS2 is closed.
 
 .PARAMETER DryRun
     Reports the account, paths, backup, and file operations without changing disk.
+
+.PARAMETER AllSaveFiles
+    Copies every file beneath the unmodded saves directory instead of only
+    progress.save. Steam Cloud may remove copied files that did not already exist
+    in the modded cloud profile; the script warns when this applies.
 
 .PARAMETER AccountId
     Platform account directory to use (for Steam, the numeric Steam account ID).
@@ -45,6 +55,8 @@
 [CmdletBinding()]
 param(
     [switch]$DryRun,
+
+    [switch]$AllSaveFiles,
 
     [ValidatePattern('^[^\\/]+$')]
     [string]$AccountId,
@@ -158,20 +170,29 @@ if ($sourceSaves.Equals($targetSaves, [System.StringComparison]::OrdinalIgnoreCa
     throw "Source and target save directories resolve to the same path."
 }
 
+$sourceFiles = @(
+    if ($AllSaveFiles) {
+        Get-ChildItem -LiteralPath $sourceSaves -File -Recurse -Force |
+            Sort-Object FullName
+    }
+    else {
+        $progressPath = Join-Path $sourceSaves "progress.save"
+        if (-not (Test-Path -LiteralPath $progressPath -PathType Leaf)) {
+            throw "Unmodded progress save does not exist: '$progressPath'."
+        }
+        Get-Item -LiteralPath $progressPath -Force
+    }
+)
+if ($sourceFiles.Count -eq 0) {
+    throw "Unmodded save directory contains no files: '$sourceSaves'."
+}
+
 $sourceReparsePoints = @(
-    Get-ChildItem -LiteralPath $sourceSaves -Recurse -Force |
+    $sourceFiles |
         Where-Object { ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0 }
 )
 if ($sourceReparsePoints.Count -gt 0) {
     throw "The source contains a reparse point, which this script will not follow: '$($sourceReparsePoints[0].FullName)'."
-}
-
-$sourceFiles = @(
-    Get-ChildItem -LiteralPath $sourceSaves -File -Recurse -Force |
-        Sort-Object FullName
-)
-if ($sourceFiles.Count -eq 0) {
-    throw "Unmodded save directory contains no files: '$sourceSaves'."
 }
 
 $changes = [System.Collections.Generic.List[object]]::new()
@@ -184,9 +205,11 @@ foreach ($sourceFile in $sourceFiles) {
     }
     $targetExists = Test-Path -LiteralPath $targetFile -PathType Leaf
     $isUnchanged = $false
+    $targetLastWriteTimeUtc = $null
 
     if ($targetExists) {
         $targetInfo = Get-Item -LiteralPath $targetFile -Force
+        $targetLastWriteTimeUtc = $targetInfo.LastWriteTimeUtc
         if ($sourceFile.Length -eq $targetInfo.Length) {
             $sourceHash = (Get-FileHash -LiteralPath $sourceFile.FullName -Algorithm SHA256).Hash
             $targetHash = (Get-FileHash -LiteralPath $targetFile -Algorithm SHA256).Hash
@@ -200,6 +223,7 @@ foreach ($sourceFile in $sourceFiles) {
             RelativePath = $relativePath
             Source = $sourceFile.FullName
             Target = $targetFile
+            TargetLastWriteTimeUtc = $targetLastWriteTimeUtc
         })
     }
 }
@@ -207,6 +231,7 @@ foreach ($sourceFile in $sourceFiles) {
 Write-Host "STS2 unmodded-to-modded save copy"
 Write-Host "Account: $AccountId"
 Write-Host "Profile: $ProfileId"
+Write-Host "Scope:   $(if ($AllSaveFiles) { 'all save files' } else { 'progress.save' })"
 Write-Host "Source:  $sourceSaves"
 Write-Host "Target:  $targetSaves"
 
@@ -234,6 +259,9 @@ if ($DryRun) {
     }
     foreach ($change in $changes) {
         Write-Host ("{0,-9} {1}" -f $change.Action, $change.RelativePath)
+    }
+    if (@($changes | Where-Object { $_.Action -eq "OVERWRITE" }).Count -gt 0) {
+        Write-Host "Existing target timestamps would be retained for STS2 Steam Cloud compatibility."
     }
     Write-Host "Would copy $($changes.Count) of $($sourceFiles.Count) source file(s)."
     return
@@ -263,7 +291,18 @@ foreach ($change in $changes) {
         New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
     }
     Copy-Item -LiteralPath $change.Source -Destination $change.Target -Force
+    if ($null -ne $change.TargetLastWriteTimeUtc) {
+        [System.IO.File]::SetLastWriteTimeUtc($change.Target, $change.TargetLastWriteTimeUtc)
+    }
     Write-Host ("{0,-9} {1}" -f $change.Action, $change.RelativePath)
 }
 
 Write-Host "Copied $($changes.Count) of $($sourceFiles.Count) source file(s) into the modded profile." -ForegroundColor Green
+$createdFiles = @($changes | Where-Object { $_.Action -eq "CREATE" })
+if ($createdFiles.Count -gt 0) {
+    Write-Warning (
+        "Steam Cloud may remove $($createdFiles.Count) newly created modded file(s) that have no cloud counterpart. " +
+        "This can affect a copied current_run.save or new history entries. Disable Steam Cloud for STS2 before " +
+        "launching if those source-only files must be retained."
+    )
+}
