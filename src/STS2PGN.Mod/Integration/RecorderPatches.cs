@@ -603,8 +603,19 @@ internal static class CrystalSphereProceedPatch
     private static void Prefix() => RecorderService.RecordCrystalSphereProceed();
 }
 
-// Deck selection screens are opened by CardSelectCmd.FromDeck* after the choice id was reserved.
-// These register live models for the playback driver only; the recorded trace is unchanged.
+// Combat-pile and deck selection screens are opened after the choice id was reserved. Register
+// their live models for the playback driver only; the recorded trace remains unchanged.
+
+[HarmonyPatch(typeof(MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NCombatPileCardSelectScreen),
+    nameof(MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NCombatPileCardSelectScreen.Create))]
+internal static class CombatPileGridLiveOfferPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(CardPile pile, Func<CardModel, bool> filter) =>
+        RecorderService.RegisterLiveOnlyChoice(
+            "combat_pile_grid",
+            pile.Cards.Where(filter).ToArray());
+}
 
 [HarmonyPatch(typeof(MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NDeckCardSelectScreen),
     nameof(MegaCrit.Sts2.Core.Nodes.Screens.CardSelection.NDeckCardSelectScreen.Create))]
