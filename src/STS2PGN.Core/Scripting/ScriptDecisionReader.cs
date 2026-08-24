@@ -85,6 +85,48 @@ public static class ScriptDecisionReader
         return result;
     }
 
+    /// <summary>
+    /// Whether two recorded index arrays name the same selection. STS2 writes
+    /// a backed-out index choice as <c>[-1]</c>, while the script-facing
+    /// selection is empty so the dispatcher can press the screen's Skip or
+    /// Cancel control.
+    /// </summary>
+    public static bool SelectedIndexesMatch(JsonElement expected, JsonElement actual)
+    {
+        if (expected.ValueKind != JsonValueKind.Array || actual.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        if (!TryReadIndexes(expected, out int[] expectedIndexes)
+            || !TryReadIndexes(actual, out int[] actualIndexes))
+        {
+            return false;
+        }
+
+        return expectedIndexes.SequenceEqual(actualIndexes)
+            || (expectedIndexes.Length == 0 && actualIndexes is [-1])
+            || (actualIndexes.Length == 0 && expectedIndexes is [-1]);
+    }
+
+    private static bool TryReadIndexes(JsonElement indexes, out int[] values)
+    {
+        List<int> result = [];
+        foreach (JsonElement index in indexes.EnumerateArray())
+        {
+            if (index.ValueKind != JsonValueKind.Number || !index.TryGetInt32(out int value))
+            {
+                values = [];
+                return false;
+            }
+
+            result.Add(value);
+        }
+
+        values = result.ToArray();
+        return true;
+    }
+
     /// <summary>Selected cards of a <c>choice.cards</c> record; empty when absent.</summary>
     public static IReadOnlyList<ScriptCardSelection> GetCardSelections(JsonElement data)
     {
