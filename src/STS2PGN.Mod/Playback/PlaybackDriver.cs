@@ -354,7 +354,10 @@ internal sealed class PlaybackDriver
                 continue;
             }
 
-            if (!LiveGame.SameJson(expected, actual))
+            bool matches = decision.Kind == "choice.index" && field == "indexes"
+                ? ScriptDecisionReader.SelectedIndexesMatch(expected, actual)
+                : LiveGame.SameJson(expected, actual);
+            if (!matches)
             {
                 return field;
             }
