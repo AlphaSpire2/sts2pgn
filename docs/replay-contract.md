@@ -95,8 +95,11 @@ Per script, in order:
 4. **Finish:** `completed` when every decision settled; `game_error` on a driver
    exception, a per-record timeout (`playback_timeout_seconds`, default 30), or an
    unmapped record kind (`unsupported_record`). Standard drive mode returns to the main
-   menu. Successful handoff mode instead requires an active run and recorder, marks the
-   report `handed_off: true`, detaches the driver, and leaves both active for normal play.
+   menu. If the run is still active, it first closes the recording as an incomplete
+   `Result "*"` prefix, then abandons only the unrecorded live run for cleanup; a run that
+   ended naturally keeps its real `VICTORY` or `DEFEAT`. Successful handoff mode instead
+   requires an active run and recorder, marks the report `handed_off: true`, detaches the
+   driver, and leaves both active for normal play.
 
 Reports are written to the recorder's `output_directory`:
 

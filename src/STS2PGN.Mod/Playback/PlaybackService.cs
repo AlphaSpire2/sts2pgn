@@ -197,6 +197,18 @@ internal static class PlaybackService
             {
                 try
                 {
+                    // Standard playback must clean up the live run to make the
+                    // next batch item startable. Close a still-live recording
+                    // as an incomplete prefix before that cleanup abandons the
+                    // game; otherwise the harness manufactures a run.finish
+                    // ABANDONED result that was not produced by the script.
+                    // A run that ended naturally has already stopped its
+                    // recorder and retains its real VICTORY/DEFEAT result.
+                    if (RecorderService.IsRecording)
+                    {
+                        RecorderService.StopIncomplete();
+                    }
+
                     await PlaybackRunStarter.ReturnToMainMenuAsync(cancellation);
                 }
                 catch (Exception exception)
