@@ -58,6 +58,8 @@ internal sealed class PlaybackDriver
     private readonly List<(long Tick, long Sequence, string Context)> _settled = [];
     private long _tick;
     private DateTime _lastOfferAt = DateTime.MinValue;
+    /// <summary>The last scripted decision record matched in the live trace.</summary>
+    private long _lastMatchedDecisionSequence;
 
     public PlaybackDriver(
         DecisionScript script,
@@ -137,6 +139,30 @@ internal sealed class PlaybackDriver
         {
             _report.Stop(PlaybackStatus.GameError, PlaybackReasons.Exception, "the recorder stopped before the decision could be driven", decision);
             return false;
+        }
+
+        // Some terminal combat flows proceed without another click. In
+        // particular, Battleworn Dummy's timer expiring records room.proceed
+        // while the preceding end-turn action is settling. If that is the next
+        // scripted decision, it has already happened and must be consumed
+        // instead of waiting forever for a rewards screen that has closed.
+        if (decision.Kind == "room.proceed"
+            && FindRecorded(decision.Kind, _lastMatchedDecisionSequence) is { } automatic)
+        {
+            if (FindRecordedMismatch(decision, automatic.Data) is { } automaticMismatch)
+            {
+                _report.Stop(
+                    PlaybackStatus.StoppedAtRecord,
+                    PlaybackReasons.RecordedMismatch,
+                    $"the game automatically accepted a different '{automaticMismatch}' than the script",
+                    decision);
+                _report.Expected = decision.Data;
+                _report.Offered = automatic.Data;
+                return false;
+            }
+
+            _lastMatchedDecisionSequence = automatic.Sequence;
+            return true;
         }
 
         DateTime lastAdvance = DateTime.MinValue;
@@ -220,6 +246,8 @@ internal sealed class PlaybackDriver
             _report.Offered = recorded.Value.Data;
             return false;
         }
+
+        _lastMatchedDecisionSequence = recorded.Value.Sequence;
 
         if (dispatcher.SettlesByObservation(decision))
         {

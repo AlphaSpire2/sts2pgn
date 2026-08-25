@@ -81,7 +81,7 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
             return VerifyResult.Mismatch("the game offers different cards than the script expects", decision.Data, offer.Offered);
         }
 
-        return VerifyCardSelections(me, decision);
+        return VerifyCardSelections(me, decision, offer.Models as IReadOnlyList<CardModel>);
     }
 
     public async Task SubmitAsync(ScriptDecision decision)
@@ -342,13 +342,21 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
         return null;
     }
 
-    private static VerifyResult VerifyCardSelections(Player me, ScriptDecision decision)
+    private static VerifyResult VerifyCardSelections(
+        Player me,
+        ScriptDecision decision,
+        IReadOnlyList<CardModel>? candidates = null)
     {
         IReadOnlyList<ScriptCardSelection> selections = ScriptDecisionReader.GetCardSelections(decision.Data);
         object offered = new
         {
             deck = me.Deck.Cards.Select((card, index) => new { deck_index = index, fingerprint = PortablePayloads.CardFingerprint(card) }).ToArray(),
             hand = me.PlayerCombatState?.Hand.Cards.Select(card => new
+            {
+                combat_card_index = NetCombatCardDb.Instance.TryGetCardId(card, out uint id) ? id : (uint?)null,
+                fingerprint = PortablePayloads.CardFingerprint(card),
+            }).ToArray(),
+            candidates = candidates?.Select(card => new
             {
                 combat_card_index = NetCombatCardDb.Instance.TryGetCardId(card, out uint id) ? id : (uint?)null,
                 fingerprint = PortablePayloads.CardFingerprint(card),
@@ -365,6 +373,11 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
             if (!LiveGame.FingerprintMatches(selection.Fingerprint, PortablePayloads.CardFingerprint(card)))
             {
                 return VerifyResult.Mismatch("the card at a scripted index has a different fingerprint", decision.Data, offered);
+            }
+
+            if (candidates is not null && !candidates.Any(candidate => ReferenceEquals(candidate, card)))
+            {
+                return VerifyResult.Mismatch("a scripted card is not among the live choice candidates", decision.Data, offered);
             }
         }
 
