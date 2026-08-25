@@ -196,7 +196,8 @@ script file explicitly, for example to hand-edit it. Either way the conversion s
 recording to decisions, swaps `RecorderVersion` for `Producer`, and sets `Mode CUSTOM`.
 
 The playback driver lives in the mod and executes scripts in the real game while the
-recorder observes the session and, by default, writes a normal authoritative recording:
+recorder observes the session and, by default, writes an authoritative recording or
+recording prefix:
 
 ```bash
 # One script, a directory of scripts, or a .txt list (one path per line); quits with an exit code
@@ -237,6 +238,13 @@ expected/offered values, recording path, the `handed_off` flag, and the profile'
 state after a run that playback itself ends) and `playback-summary.json` for the batch.
 The process exit code is `0` when every script completed, otherwise `3` (stopped at a
 record), `4` (refused), or `5` (game error).
+
+If the driven decisions naturally finish the run, the recording carries the game's real
+`VICTORY` or `DEFEAT`. If the script ends or stops while the run is still active, standard
+playback closes the recording first as an incomplete `Result "*"` prefix and only then
+abandons the live run for batch cleanup. The cleanup therefore never manufactures an
+`ABANDONED` result inside the recorded evidence. Handoff mode leaves both the run and
+recording open instead.
 Details are in [docs/replay-contract.md](docs/replay-contract.md).
 
 ## Core library usage
