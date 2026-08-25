@@ -95,7 +95,21 @@ internal sealed class PlaybackDriver
 
             if (_waitForIdleAfterCompletion)
             {
-                await PlaybackWait.TryUntilAsync(() => LiveGame.IsIdle || !RecorderService.IsRecording, _timeout, _cancellation);
+                bool idle = await PlaybackWait.TryUntilAsync(
+                    () => LiveGame.IsIdle || !RecorderService.IsRecording,
+                    _timeout,
+                    _cancellation);
+                if (!idle)
+                {
+                    ScriptDecision? lastDecision = _script.Decisions.LastOrDefault();
+                    _report.Stop(
+                        PlaybackStatus.GameError,
+                        PlaybackReasons.Timeout,
+                        "the game did not become idle after the final decision settled",
+                        lastDecision);
+                    _report.Offered = LiveGame.ToJson(DescribeSurface());
+                    return;
+                }
             }
 
             _report.Status = PlaybackStatus.Completed;
@@ -211,9 +225,14 @@ internal sealed class PlaybackDriver
         {
             long recordedSequence = recorded.Value.Sequence;
             long recordedTick = recorded.Value.Tick;
+            bool finalEndTurn = _waitForIdleAfterCompletion
+                && nextDecision is null
+                && decision.Kind == "combat.end_turn";
             bool reachedNestedChoice = false;
             bool settled = await PlaybackWait.TryUntilAsync(
-                () => HasSettledAfter(recordedTick)
+                () => (finalEndTurn
+                        ? HasCompletedEnemyTurnAfter(recordedTick)
+                        : HasSettledAfter(recordedTick))
                     || (reachedNestedChoice = IsNextNestedChoiceReady(nextDecision))
                     || !RecorderService.IsRecording,
                 _timeout,
@@ -337,6 +356,21 @@ internal sealed class PlaybackDriver
         lock (_gate)
         {
             return _settled.Any(entry => entry.Tick > recordedTick);
+        }
+    }
+
+    /// <summary>
+    /// An end-turn record first emits player-turn-end and enemy-turn-start observations. Neither
+    /// means the automatic enemy turn is finished: returning to the menu at either boundary can
+    /// turn a natural defeat into an abandoned recording. Wait for the next player turn or for a
+    /// reward surface; a terminal run is covered by the recorder-stopped condition at the caller.
+    /// </summary>
+    private bool HasCompletedEnemyTurnAfter(long recordedTick)
+    {
+        lock (_gate)
+        {
+            return _settled.Any(entry => entry.Tick > recordedTick
+                && entry.Context is "combat.player_turn.start" or "reward.offered" or "room.exit");
         }
     }
 
