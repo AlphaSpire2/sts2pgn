@@ -67,7 +67,10 @@ Per script, in order:
 1. **Pre-flight — refuse rather than reinterpret.** Parse the file; a recording (has
    `RecorderVersion`, no `Producer`) is converted in memory to a script exactly as
    `sts2pgn to-script` does (Producer `sts2pgn-playback/<version>`, reported as
-   `converted_from_recording`). Validate the script in script mode; compare `GameVersion`, `GameCommit`, `ModelIdHash`, `Mode` (`CUSTOM`),
+   `converted_from_recording`). A recording containing `run.resume` is refused as
+   `script_resume_not_supported`: the driver starts a fresh seeded run and cannot restore
+   the saved checkpoint or choose only the resumed side of an abandoned branch. Validate
+   the script in script mode; compare `GameVersion`, `GameCommit`, `ModelIdHash`, `Mode` (`CUSTOM`),
    character, and ascension with the live build and profile; compare
    `run.start.data.state.players[0].unlocks` and `acts[]` with the live profile's unlock
    state and the acts the seed generates on it; refuse when a run is in progress or a run

@@ -65,6 +65,25 @@ public sealed class ScriptConverterTests
     }
 
     [Fact]
+    public void ResumedRecordingIsRefusedInsteadOfConcatenatingBothTimelines()
+    {
+        RunRecord recording = TestRecordFactory.CreateBuilder()
+            .AppendJson("run.start", RecordedRunStart)
+            .AppendJson("map.choose", TestRecordFactory.ScriptMapChoose)
+            .AppendJson("run.resume", "{\"actor\":null,\"data\":{}}")
+            .AppendJson("map.choose", TestRecordFactory.ScriptMapChoose)
+            .Build();
+
+        Sts2PgnValidationException exception =
+            Assert.Throws<Sts2PgnValidationException>(() => ScriptConverter.FromRecording(recording, "x/1"));
+        ValidationIssue issue = Assert.Single(
+            exception.ValidationResult.Errors,
+            issue => issue.Code == "script_resume_not_supported");
+        Assert.Equal("sequence:3", issue.Location);
+        Assert.Contains("cannot restore the save checkpoint", issue.Message);
+    }
+
+    [Fact]
     public void InvalidProducerIsRejected() =>
         Assert.Throws<ArgumentException>(() => ScriptConverter.FromRecording(TestRecordFactory.CreateValid(), "Bad Producer"));
 }

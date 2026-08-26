@@ -195,6 +195,12 @@ The driver performs the same conversion automatically when it is given a recordi
 script file explicitly, for example to hand-edit it. Either way the conversion strips the
 recording to decisions, swaps `RecorderVersion` for `Producer`, and sets `Mode CUSTOM`.
 
+A recording containing `run.resume` cannot be converted or driven. Playback always starts
+a fresh seeded Custom run; it cannot restore the save checkpoint embedded in `run.resume`
+or choose only the authoritative side of an abandoned/resumed branch. `to-script`, direct
+`drive`, and `handoff` therefore refuse such a recording with
+`script_resume_not_supported` instead of silently concatenating both sets of decisions.
+
 The playback driver lives in the mod and executes scripts in the real game while the
 recorder observes the session and, by default, writes an authoritative recording or
 recording prefix:
