@@ -25,8 +25,18 @@ internal sealed class CombatDispatcher : IDecisionDispatcher
             return false;
         }
 
+        // The belt is reachable outside a fight, so a drink is ready as soon as
+        // the game is not fighting - unless the script itself asked for a
+        // fight. A combat is `IsInProgress`-false on both sides of itself: the
+        // room transition ahead of it and the rewards screen behind it. Taking
+        // this door on a script that says `in_combat` verified an in-combat
+        // drink against one of those, which is where seven of ten playbacks
+        // stopped on "the potion action's combat context differs". A script
+        // that carries no context at all keeps the old door.
         if (decision.Kind is "combat.use_potion" or "combat.discard_potion"
-            && !CombatManager.Instance.IsInProgress)
+            && !CombatManager.Instance.IsInProgress
+            && !(ScriptDecisionReader.TryGetBool(decision.Data, "in_combat", out bool scriptedInCombat)
+                && scriptedInCombat))
         {
             return true;
         }
