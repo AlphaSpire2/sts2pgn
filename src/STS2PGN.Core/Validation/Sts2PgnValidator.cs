@@ -573,6 +573,16 @@ public static class Sts2PgnValidator
             string location = $"sequence:{entry.Sequence}";
             if (ScriptProfile.ForbiddenKinds.Contains(entry.Kind))
             {
+                if (entry.Kind == "run.resume")
+                {
+                    AddError(
+                        issues,
+                        "script_resume_not_supported",
+                        "The playback driver starts a new seeded run and cannot restore the save checkpoint named by run.resume; resumed recordings cannot be converted to or driven as decision scripts.",
+                        location);
+                    continue;
+                }
+
                 AddError(
                     issues,
                     "script_unsupported_record",

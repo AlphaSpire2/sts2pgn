@@ -10,7 +10,9 @@ namespace STS2PGN.Scripting;
 /// the recorded run becomes a proposal the playback driver can execute again on a matching
 /// build and profile. Observations, resolutions, lifecycle records, and <c>run.finish</c> are
 /// dropped; <c>RecorderVersion</c> becomes <c>Producer</c>; <c>Mode</c> becomes <c>CUSTOM</c>
-/// because that is the only mode in which the game accepts a chosen seed.
+/// because that is the only mode in which the game accepts a chosen seed. A recording containing
+/// <c>run.resume</c> is refused because the playback driver cannot restore its save checkpoint or
+/// distinguish the abandoned tail from the resumed timeline.
 /// </summary>
 public static class ScriptConverter
 {
@@ -69,11 +71,12 @@ public static class ScriptConverter
                 builder.Append(entry.Kind, StripRunStart(entry.Payload));
             }
             else if (ScriptProfile.DriveableKinds.Contains(entry.Kind)
-                     || (ScriptProfile.ForbiddenKinds.Contains(entry.Kind) && entry.Kind is not ("run.finish" or "run.resume")))
+                     || (ScriptProfile.ForbiddenKinds.Contains(entry.Kind) && entry.Kind != "run.finish"))
             {
                 // Undrivable *decisions* (unknown actions and undo end turn) are kept so
-                // validation names them instead of silently dropping a decision; run.finish and
-                // run.resume are outcomes and are dropped like observations.
+                // validation names them instead of silently dropping a decision. run.resume is
+                // also kept so conversion refuses a resumed recording instead of concatenating
+                // its abandoned and resumed decisions. Only run.finish is safely dropped.
                 builder.Append(entry.Kind, entry.Payload);
             }
         }

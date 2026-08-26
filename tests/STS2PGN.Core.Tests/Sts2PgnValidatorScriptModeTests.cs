@@ -137,6 +137,21 @@ public sealed class Sts2PgnValidatorScriptModeTests
     }
 
     [Fact]
+    public void ScriptModeExplainsThatRunResumeCannotBeDriven()
+    {
+        RunRecord record = TestRecordFactory.CreateScriptBuilder()
+            .AppendJson("run.start", TestRecordFactory.ScriptRunStart)
+            .AppendJson("run.resume", "{\"actor\":null,\"data\":{}}")
+            .Build();
+
+        ValidationIssue issue = Assert.Single(
+            ValidateScript(record).Errors,
+            issue => issue.Code == "script_resume_not_supported");
+        Assert.Equal("sequence:2", issue.Location);
+        Assert.Contains("cannot restore the save checkpoint", issue.Message);
+    }
+
+    [Fact]
     public void ScriptModeRequiresDecisionIdentity()
     {
         RunRecord record = TestRecordFactory.CreateScriptBuilder()

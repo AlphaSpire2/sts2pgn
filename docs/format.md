@@ -262,9 +262,12 @@ Records:
 - Outcome records are allowed but ignored with a warning (`script_ignored_record`):
   `state.observe`, `*.resolve`, `act.enter`, `room.enter`, `room.exit`, and
   `event.crystal_sphere.start`. The generated board is an observation, not simulator input.
-- Kinds without drivable identity are rejected (`script_unsupported_record`):
-  `run.finish`, `run.resume`, `choice.player`, `choice.unknown`, `game.unknown_action`,
-  and `combat.undo_end_turn`.
+- `run.resume` is rejected as `script_resume_not_supported`. Playback starts a fresh
+  seeded Custom run and cannot restore the saved checkpoint or select only the
+  authoritative side of an abandoned/resumed branch.
+- Other kinds without drivable identity are rejected (`script_unsupported_record`):
+  `run.finish`, `choice.player`, `choice.unknown`, `game.unknown_action`, and
+  `combat.undo_end_turn`.
 - `set_id` on reward records is the run's deterministic per-run counter and must match
   the live game; the driver never remaps indexes, set IDs, or options.
 
@@ -278,7 +281,8 @@ example is `examples/script-minimal.sts2pgn`. `ScriptConverter.FromRecording` (C
 `sts2pgn to-script <recording> --producer name/version`) turns a recording into a script
 that replays the same decisions: it drops observations, resolutions, lifecycle records,
 `run.finish`, the raw save snapshot, and provenance tags, replaces `RecorderVersion` with
-`Producer`, and sets `Mode` to `CUSTOM`.
+`Producer`, and sets `Mode` to `CUSTOM`. It refuses a recording containing `run.resume`
+rather than concatenating decisions from the abandoned and resumed timelines.
 
 ## Action namespaces
 
