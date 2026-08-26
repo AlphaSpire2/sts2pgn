@@ -256,6 +256,10 @@ Records:
   `combat.end_turn` — the end-of-turn flush can ask which cards to keep — `event.choose`,
   `reward.claim`, `rest.choose`, `shop.purchase`, `shop.remove_card`,
   `treasure.choose_relic`) or another `choice.*` (`script_orphan_choice`).
+- Potion decisions may carry an optional boolean `in_combat`. The driver derives the
+  submission context from the live game and treats this field as a precondition: when it
+  is present and disagrees with the live state, playback stops as a mismatch. Producers
+  should emit it when they know the intended context; older scripts may omit it.
 - `room.proceed` is only meaningful on a terminal rewards screen; proceeding from a rest
   site, shop, or treasure room is presentation-only and never recorded.
 - `event.advance` is one record per dialogue page, as the recorder emits it.

@@ -28,8 +28,8 @@ internal sealed class PlaybackDriver
     private static readonly IReadOnlyDictionary<string, string[]> IdentityFields = new Dictionary<string, string[]>(StringComparer.Ordinal)
     {
         ["combat.play_card"] = ["combat_card_index", "card_model", "card", "target"],
-        ["combat.use_potion"] = ["potion_slot", "potion_model", "target"],
-        ["combat.discard_potion"] = ["potion_slot", "potion_model"],
+        ["combat.use_potion"] = ["potion_slot", "potion_model", "in_combat", "target"],
+        ["combat.discard_potion"] = ["potion_slot", "potion_model", "in_combat"],
         ["combat.end_turn"] = ["turn"],
         ["event.crystal_sphere.click"] = ["x", "y", "tool", "remaining_before"],
         ["event.crystal_sphere.set_tool"] = ["tool"],
