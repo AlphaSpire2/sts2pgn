@@ -25,10 +25,10 @@ internal sealed class CombatDispatcher : IDecisionDispatcher
             return false;
         }
 
-        bool inCombat = ScriptDecisionReader.TryGetBool(decision.Data, "in_combat", out bool flag) ? flag : true;
-        if (decision.Kind is "combat.use_potion" or "combat.discard_potion" && !inCombat)
+        if (decision.Kind is "combat.use_potion" or "combat.discard_potion"
+            && !CombatManager.Instance.IsInProgress)
         {
-            return !CombatManager.Instance.IsInProgress;
+            return true;
         }
 
         // Phase must be Play: CombatManager.StartCombatInternal sets IsInProgress (and clears
@@ -119,7 +119,18 @@ internal sealed class CombatDispatcher : IDecisionDispatcher
     private static VerifyResult VerifyPotion(ScriptDecision decision)
     {
         Player me = LiveGame.LocalPlayer!;
-        object offered = me.PotionSlots.Select((potion, index) => new { potion_slot = index, potion_model = potion?.Id.ToString() }).ToArray();
+        bool liveInCombat = CombatManager.Instance.IsInProgress;
+        object potions = me.PotionSlots.Select((potion, index) => new { potion_slot = index, potion_model = potion?.Id.ToString() }).ToArray();
+        object offered = new { in_combat = liveInCombat, potions };
+        if (ScriptDecisionReader.TryGetBool(decision.Data, "in_combat", out bool expectedInCombat)
+            && expectedInCombat != liveInCombat)
+        {
+            return VerifyResult.Mismatch(
+                "the potion action's combat context differs",
+                new { in_combat = expectedInCombat },
+                offered);
+        }
+
         if (!ScriptDecisionReader.TryGetInt(decision.Data, "potion_slot", out int slot) || slot < 0 || slot >= me.PotionSlots.Count)
         {
             return VerifyResult.Mismatch("the scripted potion slot does not exist", decision.Data, offered);

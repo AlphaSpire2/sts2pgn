@@ -705,6 +705,15 @@ public static class Sts2PgnValidator
             case "combat.discard_potion":
                 Require(HasNonNegativeInteger(data, "potion_slot"), "potion_slot");
                 Require(HasNonEmptyString(data, "potion_model"), "potion_model");
+                if (data.TryGetProperty("in_combat", out JsonElement inCombat)
+                    && inCombat.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                {
+                    AddError(
+                        issues,
+                        "script_invalid_identity",
+                        $"{entry.Kind} optional data.in_combat must be a boolean.",
+                        location);
+                }
                 break;
             case "combat.end_turn":
                 Require(HasInteger(data, "turn"), "turn");

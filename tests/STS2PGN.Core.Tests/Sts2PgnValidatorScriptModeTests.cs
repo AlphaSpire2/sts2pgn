@@ -199,6 +199,26 @@ public sealed class Sts2PgnValidatorScriptModeTests
             && issue.Location == "sequence:3" && issue.Message.Contains("data.remaining_before"));
     }
 
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("false", true)]
+    [InlineData("\"outside\"", false)]
+    public void ScriptModeTreatsPotionCombatContextAsAnOptionalBoolean(string? context, bool valid)
+    {
+        string suffix = context is null ? string.Empty : $",\"in_combat\":{context}";
+        RunRecord record = TestRecordFactory.CreateScriptBuilder()
+            .AppendJson("run.start", TestRecordFactory.ScriptRunStart)
+            .AppendJson(
+                "combat.discard_potion",
+                $"{{\"actor\":\"p0\",\"data\":{{\"potion_slot\":0,\"potion_model\":\"POTION.FIRE_POTION\"{suffix}}}}}")
+            .Build();
+
+        Sts2PgnValidationResult result = ValidateScript(record);
+
+        Assert.Equal(valid, result.IsValid);
+        Assert.Equal(!valid, result.Errors.Any(issue => issue.Code == "script_invalid_identity"));
+    }
+
     [Fact]
     public void ScriptModeRequiresChoiceOfferAndFingerprints()
     {

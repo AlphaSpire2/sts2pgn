@@ -122,8 +122,8 @@ live game before acting, the call it makes, and the recorder context that settle
 | Script kind | Ready when | Verified against | Submit call | Settles on |
 |---|---|---|---|---|
 | `combat.play_card` | combat in progress, player side in the Play phase (`PlayerCombatState.Phase`), queue idle | hand card by `combat_card_index` + `card` fingerprint; target creature `combat_id` + `model_id` | `ActionQueueSynchronizer.RequestEnqueue(new PlayCardAction(card, target))` | `action.settled`, or readiness of the immediately following nested choice (including combat-pile grids such as Hologram) |
-| `combat.use_potion` | idle | `potion_slot` model + target | `PotionModel.EnqueueManualUse(target)` | `action.settled` |
-| `combat.discard_potion` | idle | `potion_slot` model | discard action enqueue | `action.settled` |
+| `combat.use_potion` | idle; live combat state selects the valid action surface | `potion_slot` model + target; optional `in_combat` assertion | `PotionModel.EnqueueManualUse(target)` | `action.settled` |
+| `combat.discard_potion` | idle; live combat state selects the valid action surface | `potion_slot` model; optional `in_combat` assertion | discard action enqueue using the live combat state | `action.settled` |
 | `combat.end_turn` | player side, not yet ended, `turn` matches | turn number | `PlayerCmd.EndTurn(player, canBackOut: false)` (recorded by `DirectEndTurnPatch`) | `combat.player_turn.start` / reward or run-end settle |
 | `map.choose` | map screen open (the driver first clicks the unrecorded Proceed button of a rest site, shop, treasure room, or event shop, or a finished event's synthetic PROCEED option, exactly as a player would) | travelable point at `(col,row)` | `NMapScreen.OnMapPointSelectedLocally(point)` | `room.enter` |
 | `act.next` | act-end surface | — | `ActChangeSynchronizer.SetLocalPlayerReady()` | `act.enter` |

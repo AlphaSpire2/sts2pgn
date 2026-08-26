@@ -186,7 +186,7 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
                     {
                         ConfirmGrid(gridScreen);
                     }
-                    else
+                    else if (!TryConfirmGrid(gridScreen))
                     {
                         CancelGrid(gridScreen);
                     }
@@ -386,26 +386,31 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
 
     private static void ConfirmGrid(NCardGridSelectionScreen screen)
     {
+        if (!TryConfirmGrid(screen))
+        {
+            throw new InvalidOperationException("No usable confirm button on the selection screen.");
+        }
+    }
+
+    private static bool TryConfirmGrid(NCardGridSelectionScreen screen)
+    {
         foreach (string container in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%EnchantSinglePreviewContainer", "%EnchantMultiPreviewContainer", "%PreviewContainer" })
         {
             Control? preview = screen.GetNodeOrNull<Control>(container);
             if (preview is { Visible: true }
                 && (ClickIfUsable(preview.GetNodeOrNull<NConfirmButton>("Confirm")) || ClickIfUsable(screen.GetNodeOrNull<NConfirmButton>("%PreviewConfirm"))))
             {
-                return;
+                return true;
             }
         }
 
         if (ClickIfUsable(screen.GetNodeOrNull<NConfirmButton>("%Confirm")) || ClickIfUsable(screen.GetNodeOrNull<NConfirmButton>("Confirm")))
         {
-            return;
+            return true;
         }
 
         NConfirmButton? fallback = LiveGame.FindAll<NConfirmButton>(screen).FirstOrDefault(LiveGame.IsUsable);
-        if (!ClickIfUsable(fallback))
-        {
-            throw new InvalidOperationException("No usable confirm button on the selection screen.");
-        }
+        return ClickIfUsable(fallback);
     }
 
     private static void CancelGrid(NCardGridSelectionScreen screen)
