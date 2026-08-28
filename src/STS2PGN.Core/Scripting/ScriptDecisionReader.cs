@@ -1,5 +1,7 @@
 using System.Text.Json;
 
+using STS2PGN.Serialization;
+
 namespace STS2PGN.Scripting;
 
 /// <summary>A selected card reference: a positional index plus its portable fingerprint.</summary>
@@ -168,5 +170,77 @@ public static class ScriptDecisionReader
 
         string? modelId = GetString(target, "model_id");
         return modelId is null ? null : new ScriptTarget(id, modelId);
+    }
+
+    /// <summary>
+    /// The half of a reward fingerprint the recorder reads through the game's save schema, and
+    /// writes as one block or not at all. <c>CardReward.ToSerializable</c> throws on an offer whose
+    /// pool is narrowed by a filter, and on one carrying a creation flag past the reward marker;
+    /// the recorder catches the throw and leaves every one of these null.
+    /// </summary>
+    private static readonly string[] SaveDerivedRewardFields =
+    [
+        "card_pools",
+        "gold_amount",
+        "option_count",
+        "rarity_odds",
+        "source",
+        "was_gold_stolen_back",
+    ];
+
+    /// <summary>
+    /// Whether a scripted reward names the reward standing on the screen.
+    ///
+    /// A live offer carrying none of the save-derived block is one the schema refused, and the
+    /// block is then a record of not having read the offer rather than a description of it.
+    /// Held against a script's block it can never agree, so no claim off such a screen could be
+    /// driven at all — the Future of Potions and the colourful philosophers both stand up offers
+    /// of that kind. Where the live offer carries the block it is compared as before.
+    ///
+    /// What is left still tells apart the offers one screen puts up together: a philosopher's
+    /// three are one per rarity over disjoint card sets, and the caller matches the set and the
+    /// index either way.
+    /// </summary>
+    public static bool RewardFingerprintMatches(JsonElement expected, JsonElement live)
+    {
+        if (expected.ValueKind != JsonValueKind.Object || live.ValueKind != JsonValueKind.Object)
+        {
+            return SameJson(expected, live);
+        }
+
+        bool unwritten = SaveDerivedRewardFields.All(field =>
+            !live.TryGetProperty(field, out JsonElement value) || value.ValueKind == JsonValueKind.Null);
+        return unwritten
+            ? SameJson(WithoutSaveDerivedFields(expected), WithoutSaveDerivedFields(live))
+            : SameJson(expected, live);
+    }
+
+    private static JsonElement WithoutSaveDerivedFields(JsonElement fingerprint)
+    {
+        Dictionary<string, JsonElement> kept = [];
+        foreach (JsonProperty property in fingerprint.EnumerateObject())
+        {
+            if (!SaveDerivedRewardFields.Contains(property.Name))
+            {
+                kept[property.Name] = property.Value;
+            }
+        }
+
+        return JsonSerializer.SerializeToElement(kept);
+    }
+
+    private static bool SameJson(JsonElement expected, JsonElement live)
+    {
+        try
+        {
+            return string.Equals(
+                CanonicalJson.Serialize(expected),
+                CanonicalJson.Serialize(live),
+                StringComparison.Ordinal);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 }
