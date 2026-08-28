@@ -221,8 +221,13 @@ internal sealed class RewardDispatcher : IDecisionDispatcher
             return VerifyResult.Mismatch("the scripted reward was already claimed", decision.Data, offered);
         }
 
+        // The offer is matched through the reader rather than by whole-JSON equality: a live
+        // reward whose save-derived block the schema refused carries none of it, and a script
+        // that names the block could never agree with one.
         if (decision.Data.TryGetProperty("reward", out var expected)
-            && !LiveGame.FingerprintMatches(expected, PortablePayloads.RewardFingerprint(reward)))
+            && !ScriptDecisionReader.RewardFingerprintMatches(
+                expected,
+                LiveGame.ToJson(PortablePayloads.RewardFingerprint(reward))))
         {
             return VerifyResult.Mismatch("the reward at the scripted index has a different fingerprint", decision.Data, offered);
         }
