@@ -150,7 +150,8 @@ The output directory is configured in `config.json`, installed beside `STS2_PGN.
 {
   "output_directory": "sts2pgn",
   "playback_timeout_seconds": 30,
-  "record_playback_runs": true
+  "record_playback_runs": true,
+  "fast_playback": true
 }
 ```
 
@@ -160,6 +161,8 @@ The output directory is configured in `config.json`, installed beside `STS2_PGN.
 - A missing or invalid configuration falls back to the profile-scoped `sts2pgn` directory and logs the reason.
 
 - `playback_timeout_seconds` bounds how long the playback driver waits for any single step.
+- `fast_playback` drops presentation pacing for the duration of a playback batch. See
+  [Fast and headless playback](#fast-and-headless-playback).
 - `record_playback_runs` controls whether `sts2pgn drive` and command-line playback write
   a new `.sts2pgn` trace. Set it to `false` to drive and validate through the recorder
   without creating a trace file; playback reports are still written and their
@@ -208,6 +211,10 @@ recording prefix:
 ```bash
 # One script, a directory of scripts, or a .txt list (one path per line); quits with an exit code
 "Slay the Spire 2" --sts2pgn-script="C:\scripts\batch"
+
+# Optional: override config.json's output_directory for this launch only. Required when running
+# several playback processes at once, because they all read the same installed config.json.
+"Slay the Spire 2" --sts2pgn-script="C:\scripts\batch" --sts2pgn-out="C:\out\batch-1"
 ```
 
 or, from the in-game dev console, `sts2pgn drive <path>` (never quits). To drive a
@@ -223,6 +230,10 @@ authoritative recording through the normal recorder path. Handoff accepts exactl
 script and reports `handed_off: true`; it is successful only if the script leaves an
 active recorded run. A handoff report omits `unlocks_after_run` because the run has not
 ended. `sts2pgn cancel` aborts and abandons playback—it is not a handoff.
+
+Command-line playback also takes `--headless --fixed-fps 60`, which runs it without a window
+and several times faster without changing the recorded trace; see
+[Fast and headless playback](#fast-and-headless-playback).
 
 For a takeover at Crystal Sphere, convert a known recording with `to-script`, remove
 the decisions after the desired boundary (for example, the `map.choose` that enters its
@@ -252,6 +263,174 @@ abandons the live run for batch cleanup. The cleanup therefore never manufacture
 `ABANDONED` result inside the recorded evidence. Handoff mode leaves both the run and
 recording open instead.
 Details are in [docs/replay-contract.md](docs/replay-contract.md).
+
+## Fast and headless playback
+
+A playback batch is unattended, so the game never has to present anything to a player and does not
+need a window. The recipe:
+
+```powershell
+$game = "C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2"
+
+# Steamworks has to initialize or the game blocks on an error popup; see below.
+$env:SteamAppId = "2868840"
+
+& "$game\SlayTheSpire2.exe" --headless --fixed-fps 60 `
+    "--sts2pgn-out=C:\out\batch-1" "--sts2pgn-script=C:\scripts\batch"
+```
+
+It exits with the usual batch code (`0` all completed, `3` stopped at a record, `4` refused,
+`5` game error) and writes the same per-script reports and `playback-summary.json` into
+`--sts2pgn-out`. Progress goes to the game log at
+`%APPDATA%\SlayTheSpire2\logs\godot.log`, since there is no window to watch.
+
+Measured on a five-script batch (1262 driven decisions), wall clock including game boot:
+
+| configuration | time | result |
+|---|---|---|
+| as shipped before, windowed or headless | 1286 s | reference |
+| `--headless --fixed-fps 60` | **190 s** | same stop points, traces identical |
+| two concurrent instances, same flags | **127 s** | same stop points, traces identical |
+
+That is 6.8x serially and 10.1x across two processes, with every recorded trace byte-for-byte the
+same as the reference apart from the save snapshot's wall-clock timestamps. Headless alone buys
+almost nothing — playback is wait-bound, not frame-bound. Its value is that it permits the uncapped
+frame rate, makes `--fixed-fps` meaningful, and lets instances run concurrently.
+
+### Why `--fixed-fps` and not a faster game
+
+`--fixed-fps <n>` feeds the main loop a synthetic frame delta and stops synchronising it to real
+time. Every wait, tween, and timer still happens, still takes the same number of game-seconds, and
+still happens in the same order — the whole schedule simply costs less wall clock. That is why the
+trace does not move. Use 60: it is the rate the game's animations are authored against, and a lower
+number advances more game time per real second than a higher one.
+
+The alternative — telling the game to *skip* its waits — is equally fast and does change the trace,
+so it is off by default. See the levers below.
+
+### The game guards on two clocks
+
+Once game time outruns real time, the two stop being interchangeable, and the game uses both.
+Animations are tweens, advanced by the process delta — game time. But
+`NChooseACardSelectionScreen.SelectHolder` ignores presses until
+`Time.GetTicksMsec() - _openedTicks > 350`, which is real time.
+
+A presentation wait denominated only in game time therefore clears the 0.4 s entry tween and still
+lands inside that 350 ms real-time window, where the press is silently dropped and the batch hangs
+on a screen that never closes. `PresentationDelay` waits for **both** clocks for this reason. It
+also means each such wait costs its full duration in real time however fast the game runs, which is
+the floor on how fast a batch can get.
+
+### `fast_playback`
+
+`fast_playback` (default `true`) is active only for the duration of a batch and is restored before a
+handoff hands control back to the player. By default it enables exactly one lever, the only one
+measured to leave the trace unchanged:
+
+- **`uncapped_frame_rate`** — replaces the player's FPS limit with no limit, headless only. Worth
+  about 1.2x alone; combined with `--fixed-fps` it is what turns a synthetic delta into real speed.
+
+The other three are selectable by name (`"fast_playback": ["uncapped_frame_rate", ...]`) but are not
+on by default, because each was measured to change recorded output or buy nothing:
+
+- **`instant_presentation`** — as fast as `--fixed-fps`, but it removes waits instead of shortening
+  them, so the `room.enter` observation for a combat room is captured after combat has begun
+  (`phase=start`, `energy=3`, one card in hand) instead of before it. Seven records of 520 moved.
+- **`non_interactive`** — the game's own smoke-test mode. Worth about 1% once the frame rate is
+  uncapped, which does not justify being the one lever that changes `ActionExecutor`'s control flow.
+- **`frame_polling`** — polls the driver on the scene tree's process frame instead of the 50 ms
+  wall-clock interval. **Known unsafe.** It makes the driver observe and act during `ProcessFrame`
+  emission rather than where the synchronization context is pumped, catching the game mid-transition.
+  Observed dropping a shop's `room.enter` entirely, writing a `room.exit` with a null payload,
+  recording the following `room.enter` twice, and hanging a batch in a shop. Kept only so the result
+  stays reproducible.
+
+Set `fast_playback` to `false` to drive at normal presentation speed.
+
+`Engine.TimeScale` looks like an equivalent runtime knob and is not: `NHitStop` sets it absolutely
+(0.1 then back to 1.0) whenever certain monsters land a hit, so it would be silently reset mid-run.
+
+### Headless needs Steam
+
+Headless boots to the main menu in about 12 s, but the game blocks on an error popup during platform
+init if Steamworks cannot start. Let it attach to the running client by setting `SteamAppId=2868840`
+in the environment.
+
+The game also accepts `--force-steam=off`, which skips the platform entirely — **do not use it for
+conformance runs.** It changes the recorded `platform_type` from `steam` to `none`, and one script
+that otherwise stops at its expected record instead failed to drive an out-of-combat
+`combat.discard_potion` 60 decisions earlier. The same script on the same isolated profile with
+Steam enabled behaves exactly like the reference.
+
+Driving itself is unaffected by headless: every dispatcher submits through
+`ForceClick()`/`EmitSignal(Pressed)` rather than synthetic mouse input, which is what the game's own
+automation helper documents as the way to "bypass hover/focus/pause checks that can fail in
+headless/automated testing".
+
+### Running batches in parallel
+
+Two concurrent instances ran the five-script batch with every stop point and every trace matching
+the serial reference. Instances need isolating in two places:
+
+- **Reports and traces.** All instances share the installed `config.json`, so pass
+  `--sts2pgn-out=<dir>` to give each process its own output directory. Without it their
+  `playback-summary.json` files overwrite each other.
+- **`user://`.** Saves, profile progress, and logs live there. On Windows Godot resolves `user://`
+  under `%APPDATA%`, so setting `APPDATA` per process gives each instance its own tree. Seed each one
+  with `steam/<id>/{settings.save,profile.save}` and
+  `steam/<id>/modded/profile<n>/saves/{progress.save,prefs.save}` so script pre-flight sees the
+  unlocks it expects, and leave `current_run.save` out so each instance starts its own run.
+
+Keep Steam Cloud off: every instance is a separate local tree that the cloud would try to reconcile.
+
+Splitting a batch across two processes, each driving its own `.txt` list of scripts:
+
+```powershell
+$game = "C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2"
+$acct = "steam\76561198026368513"          # your platform account folder under %APPDATA%\SlayTheSpire2
+$env:SteamAppId = "2868840"
+
+# Resolve the real profile once: the loop below reassigns APPDATA, so reading it inside
+# would make the second instance seed itself from the first one's tree.
+$src = "$env:APPDATA\SlayTheSpire2\$acct"
+
+$procs = 1..2 | ForEach-Object {
+    $root = "C:\sts2-par\inst$_"
+
+    # One user:// tree per process, seeded with just enough for pre-flight to pass.
+    $dst = "$root\SlayTheSpire2\$acct"
+    New-Item -ItemType Directory -Force "$dst\modded\profile1\saves" | Out-Null
+    Copy-Item "$src\settings.save","$src\profile.save" $dst -Force
+    Copy-Item "$src\modded\profile1\saves\progress.save" `
+              "$src\modded\profile1\saves\prefs.save" "$dst\modded\profile1\saves" -Force
+
+    $env:APPDATA = $root                     # Start-Process inherits this
+    Start-Process "$game\SlayTheSpire2.exe" -WorkingDirectory $game -PassThru -ArgumentList @(
+        "--headless", "--fixed-fps", "60",
+        "--sts2pgn-out=C:\sts2-par\out$_",
+        "--sts2pgn-script=C:\sts2-par\list$_.txt")
+}
+$procs | ForEach-Object { $_.WaitForExit() }
+$procs | ForEach-Object { "PID $($_.Id) exit $($_.ExitCode)" }
+```
+
+Do not copy `current_run.save` into a seeded tree: each instance has to start its own run, and a
+leftover run save makes pre-flight refuse.
+
+### Comparing two recordings
+
+Exclude, or two runs of the same script will look divergent when they are not:
+
+- the `RunId`, `StartedAt`, and `GameStartTime` headers;
+- the save snapshot's `run_time`, `save_time`, `start_time`, and `platform_type`;
+- `encounters_seen` — mutable profile progress that grows as runs are played and feeds every
+  `state.observe` digest.
+
+One genuine caveat remains. The `room.enter` observation for a combat room is captured synchronously
+when `RunManager.RoomEntered` fires, which is after `await room.Enter(...)`, so how much of combat
+setup has run by then depends on presentation pacing. Across 2915 records it moved once, flipping
+`player_actions_disabled`. Anchoring that observation to an explicit completion signal would remove
+the last timing sensitivity in the trace.
 
 ## Core library usage
 

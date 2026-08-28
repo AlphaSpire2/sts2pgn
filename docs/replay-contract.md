@@ -104,6 +104,25 @@ Per script, in order:
    requires an active run and recorder, marks the report `handed_off: true`, detaches the
    driver, and leaves both active for normal play.
 
+Presentation speed is not part of the contract, but it is not free either. The driver never advances
+on its own clock, so in principle how long the game takes to present a decision only changes how long
+the batch takes. In practice two things are timing-sensitive and must be treated as part of the
+contract's surface:
+
+- The `room.enter` observation for a combat room is captured synchronously when
+  `RunManager.RoomEntered` fires, which is after `await room.Enter(...)`. How much of combat setup
+  has run by then depends on presentation pacing, so removing the game's waits (instant fast mode)
+  changes that record's contents. Making game time cheap instead of removing it — launching headless
+  with `--fixed-fps` — leaves every wait in place and the trace unchanged.
+- The driver must observe the game where the synchronization context is pumped, as `Task.Delay` does,
+  not during `ProcessFrame` emission. Polling on the process frame catches the game mid-transition
+  and has been observed to drop and duplicate `room.*` records outright.
+
+Waits the driver owns and that are meant to outlast an animation (the selection-screen settle) are
+measured with `PresentationDelay`, a `SceneTreeTimer`, so they are denominated in the same game time
+the animation is, at any frame rate. Per-step timeouts stay on the wall clock. A trace recorded with
+any speed setting must be identical to one recorded without it; that equality is the acceptance test.
+
 Reports are written to the recorder's `output_directory`:
 
 - `<script-name>.playback.json`: `status` (`completed`, `refused_at_start`,

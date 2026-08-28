@@ -113,7 +113,7 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
                 holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
             }
 
-            await Task.Delay(PlaybackWait.PollInterval);
+            await PlaybackWait.PollAsync();
             ClickIfUsable(hand.GetNodeOrNull<NConfirmButton>("%SelectModeConfirmButton"));
             return;
         }
@@ -196,7 +196,7 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
                     any = true;
                 }
 
-                await Task.Delay(PlaybackWait.PollInterval);
+                await PlaybackWait.PollAsync();
                 if (ReferenceEquals(LiveGame.TopOverlay, gridScreen))
                 {
                     if (any)
@@ -250,7 +250,7 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
                 .ToArray();
             if (displayedIndexes.Length == 0)
             {
-                await Task.Delay(PlaybackWait.PollInterval);
+                await PlaybackWait.PollAsync();
                 continue;
             }
 
@@ -261,7 +261,7 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
             // NCardGrid virtualizes large decks. SetScrollPosition moves the container immediately,
             // so explicitly ask it to refresh the sliding holder window before polling again.
             grid.Call(NCardGrid.MethodName.AllocateCardHolders);
-            await Task.Delay(PlaybackWait.PollInterval);
+            await PlaybackWait.PollAsync();
         }
 
         throw new PlaybackTimeoutException($"Timed out materializing selection-grid card at option index {targetIndex}.");
