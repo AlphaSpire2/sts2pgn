@@ -178,8 +178,30 @@ internal sealed class CombatDispatcher : IDecisionDispatcher
         }
 
         CombatState? combat = LiveGame.Combat;
-        Creature? creature = combat?.GetCreature(expected.CombatId);
-        object offered = combat?.Creatures.Select(candidate => new { combat_id = candidate.CombatId, model_id = candidate.ModelId.ToString() }).ToArray() ?? [];
+        if (combat is null)
+        {
+            // Outside a fight there is no combat state to look a target up in,
+            // and nobody but the drinker to aim at. `PotionModel
+            // .EnqueueManualUse` settles a null target on `Owner.Creature`
+            // itself, which is what the submit below hands it, so the scripted
+            // target is checked against that creature rather than against a
+            // state that is not there. Six of twenty playbacks stopped here on
+            // a potion claimed and drunk at a rewards screen.
+            Creature? drinker = LiveGame.LocalPlayer?.Creature;
+            if (drinker is not null
+                && string.Equals(drinker.ModelId.ToString(), expected.ModelId, StringComparison.Ordinal))
+            {
+                return VerifyResult.Success;
+            }
+
+            return VerifyResult.Mismatch(
+                "the scripted target is not the drinker, and outside a fight there is nobody else to aim at",
+                expected,
+                new { in_combat = false, drinker = drinker?.ModelId.ToString() });
+        }
+
+        Creature? creature = combat.GetCreature(expected.CombatId);
+        object offered = combat.Creatures.Select(candidate => new { combat_id = candidate.CombatId, model_id = candidate.ModelId.ToString() }).ToArray();
         if (creature is null || !string.Equals(creature.ModelId.ToString(), expected.ModelId, StringComparison.Ordinal))
         {
             return VerifyResult.Mismatch("the scripted target is not the creature the game has at that combat id", expected, offered);
@@ -202,6 +224,12 @@ internal sealed class CombatDispatcher : IDecisionDispatcher
         return card;
     }
 
+    /// <summary>
+    /// The creature a scripted target names, or null where there is no combat
+    /// state to name one in — which a drink outside a fight always is, and
+    /// where null is the right thing to submit: `EnqueueManualUse` settles it
+    /// on the drinker itself.
+    /// </summary>
     private static Creature? ResolveTarget(ScriptDecision decision)
     {
         ScriptTarget? target = ScriptDecisionReader.GetTarget(decision.Data);
