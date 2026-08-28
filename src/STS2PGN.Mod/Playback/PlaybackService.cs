@@ -67,6 +67,8 @@ internal static class PlaybackService
         try
         {
             await PlaybackRunStarter.WaitForMainMenuAsync(cancellation);
+            PlaybackSpeed.Activate(RecorderService.Config.FastPlayback);
+
             outputDirectory = RecorderService.Config.ResolveOutputDirectory();
             foreach (string scriptPath in args.ScriptPaths)
             {
@@ -92,6 +94,9 @@ internal static class PlaybackService
         }
         finally
         {
+            // Restore the player's presentation settings before anything else: a handoff leaves
+            // the run live under manual control, and quitting should not persist an odd fast mode.
+            PlaybackSpeed.Deactivate();
             summary.FinishedAt = DateTimeOffset.UtcNow;
             int exitCode = summary.ExitCode;
             RecorderService.ExecuteSafely("writing playback summary", () =>

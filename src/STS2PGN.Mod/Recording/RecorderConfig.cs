@@ -1,21 +1,55 @@
 using System.Reflection;
 using System.Text.Json;
 using Godot;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Saves;
+using STS2PGN.Mod.Playback;
 
 namespace STS2PGN.Mod.Recording;
 
 internal sealed record RecorderConfig(
     string OutputDirectory,
     int PlaybackTimeoutSeconds = RecorderConfig.DefaultPlaybackTimeoutSeconds,
-    bool RecordPlaybackRuns = RecorderConfig.DefaultRecordPlaybackRuns)
+    bool RecordPlaybackRuns = RecorderConfig.DefaultRecordPlaybackRuns,
+    PlaybackSpeedLevers FastPlayback = RecorderConfig.DefaultFastPlayback)
 {
     public const string FileName = "config.json";
+
+    /// <summary>
+    /// <c>--sts2pgn-out=&lt;dir&gt;</c> overrides <c>output_directory</c> for one launch. Concurrent
+    /// playback processes share the installed <see cref="FileName"/>, so this is how each one is
+    /// given its own report and trace directory.
+    /// </summary>
+    public const string OutputDirectoryArg = "sts2pgn-out";
     public const string DefaultOutputDirectory = "sts2pgn";
     public const int DefaultPlaybackTimeoutSeconds = 30;
     public const bool DefaultRecordPlaybackRuns = true;
+    /// <summary>
+    /// Only the lever measured to leave the trace byte-identical. The speed comes from launching
+    /// with <c>--headless --fixed-fps 60</c>, which this lever is what enables.
+    /// </summary>
+    public const PlaybackSpeedLevers DefaultFastPlayback = PlaybackSpeedLevers.UncappedFrameRate;
 
     public static RecorderConfig Load()
+    {
+        RecorderConfig config = LoadFile();
+        if (!CommandLineHelper.HasArg(OutputDirectoryArg))
+        {
+            return config;
+        }
+
+        string? overridden = CommandLineHelper.GetValue(OutputDirectoryArg);
+        if (string.IsNullOrWhiteSpace(overridden))
+        {
+            GD.PrintErr($"[STS2PGN] --{OutputDirectoryArg} needs a directory; keeping '{config.OutputDirectory}'");
+            return config;
+        }
+
+        GD.Print($"[STS2PGN] Output directory overridden on the command line: {overridden.Trim()}");
+        return config with { OutputDirectory = overridden.Trim() };
+    }
+
+    private static RecorderConfig LoadFile()
     {
         string? modDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
         if (string.IsNullOrEmpty(modDirectory))
@@ -60,12 +94,55 @@ internal sealed record RecorderConfig(
                 recordPlaybackRuns = recordPlaybackRunsElement.GetBoolean();
             }
 
-            return new RecorderConfig(outputDirectory.GetString()!.Trim(), timeout, recordPlaybackRuns);
+            PlaybackSpeedLevers fastPlayback = DefaultFastPlayback;
+            if (document.RootElement.TryGetProperty("fast_playback", out JsonElement fastPlaybackElement))
+            {
+                fastPlayback = ReadFastPlayback(fastPlaybackElement, configPath);
+            }
+
+            return new RecorderConfig(outputDirectory.GetString()!.Trim(), timeout, recordPlaybackRuns, fastPlayback);
         }
         catch (Exception exception)
         {
             GD.PrintErr($"[STS2PGN] Could not read {configPath}: {exception.Message}; using the default output directory");
             return Default();
+        }
+    }
+
+    /// <summary>
+    /// <c>true</c>/<c>false</c> for all-or-nothing, or an array naming individual levers
+    /// (<c>non_interactive</c>, <c>instant_presentation</c>, <c>uncapped_frame_rate</c>,
+    /// <c>frame_polling</c>) to run a batch with only some of them.
+    /// </summary>
+    private static PlaybackSpeedLevers ReadFastPlayback(JsonElement element, string configPath)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.True:
+                return DefaultFastPlayback;
+            case JsonValueKind.False:
+                return PlaybackSpeedLevers.None;
+            case JsonValueKind.Array:
+                PlaybackSpeedLevers levers = PlaybackSpeedLevers.None;
+                foreach (JsonElement entry in element.EnumerateArray())
+                {
+                    string name = entry.ValueKind == JsonValueKind.String ? entry.GetString()!.Trim() : string.Empty;
+                    switch (name.ToLowerInvariant())
+                    {
+                        case "non_interactive": levers |= PlaybackSpeedLevers.NonInteractive; break;
+                        case "instant_presentation": levers |= PlaybackSpeedLevers.InstantPresentation; break;
+                        case "uncapped_frame_rate": levers |= PlaybackSpeedLevers.UncappedFrameRate; break;
+                        case "frame_polling": levers |= PlaybackSpeedLevers.FramePolling; break;
+                        default:
+                            GD.PrintErr($"[STS2PGN] {configPath}: unknown fast_playback lever '{name}'; ignoring it");
+                            break;
+                    }
+                }
+
+                return levers;
+            default:
+                GD.PrintErr($"[STS2PGN] {configPath}: 'fast_playback' must be a boolean or an array of lever names; using the default");
+                return DefaultFastPlayback;
         }
     }
 

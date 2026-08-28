@@ -24,6 +24,9 @@ internal sealed class PlaybackDriver
         new ChoiceDispatcher(),
     ];
 
+    /// <summary>How much game time to leave between unrecorded presentation clicks (room Proceed buttons).</summary>
+    private static readonly TimeSpan AdvanceRetryInterval = TimeSpan.FromSeconds(1);
+
     /// <summary>Payload fields whose recorded value must equal the script's, per kind.</summary>
     private static readonly IReadOnlyDictionary<string, string[]> IdentityFields = new Dictionary<string, string[]>(StringComparer.Ordinal)
     {
@@ -57,7 +60,6 @@ internal sealed class PlaybackDriver
     private readonly List<(long Tick, long Sequence, string Kind, JsonElement Data)> _recorded = [];
     private readonly List<(long Tick, long Sequence, string Context)> _settled = [];
     private long _tick;
-    private DateTime _lastOfferAt = DateTime.MinValue;
     /// <summary>The last scripted decision record matched in the live trace.</summary>
     private long _lastMatchedDecisionSequence;
 
@@ -79,7 +81,6 @@ internal sealed class PlaybackDriver
     {
         RecorderService.Recorded += OnRecorded;
         RecorderService.Settled += OnSettled;
-        RecorderService.LiveOfferRegistered += OnLiveOfferRegistered;
         try
         {
             for (int index = 0; index < _script.Decisions.Count; index++)
@@ -133,7 +134,6 @@ internal sealed class PlaybackDriver
         {
             RecorderService.Recorded -= OnRecorded;
             RecorderService.Settled -= OnSettled;
-            RecorderService.LiveOfferRegistered -= OnLiveOfferRegistered;
         }
     }
 
@@ -176,7 +176,11 @@ internal sealed class PlaybackDriver
             return true;
         }
 
-        DateTime lastAdvance = DateTime.MinValue;
+        PresentationDelay? advanceGate = null;
+        // Anchored to the screen being up rather than to the offer being registered: a selection
+        // screen ignores presses while it animates in, and the gap between "offer registered" and
+        // "screen present" is wall-clock-sized, so it vanishes once game time is cheap.
+        PresentationDelay? settle = null;
         bool ready = await PlaybackWait.TryUntilAsync(
             () =>
             {
@@ -188,14 +192,20 @@ internal sealed class PlaybackDriver
                 bool gate = insideRunningAction ? LiveGame.NoModalOpen : LiveGame.IsIdle;
                 if (gate && SafeIsReady(dispatcher, decision))
                 {
-                    return OfferSettleElapsed(decision);
+                    if (!decision.IsChoice)
+                    {
+                        return true;
+                    }
+
+                    settle ??= PresentationDelay.Start(ChoiceDispatcher.ScreenSettleDelay);
+                    return settle.HasElapsed;
                 }
 
                 // Not there yet: let the dispatcher perform any unrecorded presentation step
                 // (room Proceed buttons) that a player would click to reach the decision.
-                if (gate && DateTime.UtcNow - lastAdvance >= TimeSpan.FromSeconds(1))
+                if (gate && advanceGate?.HasElapsed != false)
                 {
-                    lastAdvance = DateTime.UtcNow;
+                    advanceGate = PresentationDelay.Start(AdvanceRetryInterval);
                     SafeAdvance(dispatcher, decision);
                 }
 
@@ -267,12 +277,11 @@ internal sealed class PlaybackDriver
             bool finalEndTurn = _waitForIdleAfterCompletion
                 && nextDecision is null
                 && decision.Kind == "combat.end_turn";
-            bool reachedNestedChoice = false;
             bool settled = await PlaybackWait.TryUntilAsync(
                 () => (finalEndTurn
                         ? HasCompletedEnemyTurnAfter(recordedTick)
                         : HasSettledAfter(recordedTick))
-                    || (reachedNestedChoice = IsNextNestedChoiceReady(nextDecision))
+                    || IsNextNestedChoiceReady(nextDecision)
                     || ChoiceLeftNothingToSettle(decision)
                     || !RecorderService.IsRecording,
                 _timeout,
@@ -283,13 +292,6 @@ internal sealed class PlaybackDriver
                 return false;
             }
 
-            if (reachedNestedChoice)
-            {
-                // Hand-selection choices do not register a live offer, while deck grids do.
-                // Start the same presentation settle delay for both before the next loop
-                // presses holders on the newly opened screen.
-                _lastOfferAt = DateTime.UtcNow;
-            }
         }
 
         return true;
@@ -345,9 +347,6 @@ internal sealed class PlaybackDriver
         return dispatcher is not null && SafeIsReady(dispatcher, decision);
     }
 
-    private bool OfferSettleElapsed(ScriptDecision decision) =>
-        !decision.IsChoice || DateTime.UtcNow - _lastOfferAt >= ChoiceDispatcher.ScreenSettleDelay;
-
     private void OnRecorded(long sequence, string kind, object? data)
     {
         JsonElement element;
@@ -366,23 +365,11 @@ internal sealed class PlaybackDriver
         }
     }
 
-    private void OnLiveOfferRegistered()
-    {
-        lock (_gate)
-        {
-            _lastOfferAt = DateTime.UtcNow;
-        }
-    }
-
     private void OnSettled(long sequence, string context)
     {
         lock (_gate)
         {
             _settled.Add((++_tick, sequence, context));
-            if (context == "choice.offered")
-            {
-                _lastOfferAt = DateTime.UtcNow;
-            }
         }
     }
 
