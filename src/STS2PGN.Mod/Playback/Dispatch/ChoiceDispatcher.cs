@@ -27,6 +27,23 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
     /// <summary>Selection screens drop presses within ~350 ms of opening; give them time.</summary>
     public static readonly TimeSpan ScreenSettleDelay = TimeSpan.FromMilliseconds(450);
 
+    /// <summary>
+    /// How long to watch for a preview stage before taking the screen for a one-press one. A
+    /// preview is opened by the confirm's own handler, so this is a few frames' grace rather than a
+    /// wait for anything: a screen that settles on one press pays it only until it closes.
+    /// </summary>
+    private static readonly TimeSpan PreviewConfirmWindow = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>The containers a screen shows a preview of its selection in, in the order checked.</summary>
+    private static readonly string[] PreviewContainers =
+    [
+        "%UpgradeSinglePreviewContainer",
+        "%UpgradeMultiPreviewContainer",
+        "%EnchantSinglePreviewContainer",
+        "%EnchantMultiPreviewContainer",
+        "%PreviewContainer",
+    ];
+
     public bool Handles(string kind) => kind is "choice.index" or "choice.cards";
 
     public bool IsReady(ScriptDecision decision)
@@ -190,6 +207,8 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
                     {
                         CancelGrid(gridScreen);
                     }
+
+                    await ConfirmPreviewIfOneOpenedAsync(gridScreen);
                 }
 
                 break;
@@ -384,6 +403,53 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
         return VerifyResult.Success;
     }
 
+    /// <summary>
+    /// A screen that asks for its selection to be confirmed by hand answers the first confirm by
+    /// showing what the selection will do and waiting again: the transform screen a Claws opens is
+    /// one of those. What settles the choice is the preview's own confirm, which does not exist to
+    /// be pressed until the preview is up — so the first confirm opens it, and this presses it. A
+    /// screen that settles on one confirm has closed by the time this looks, which is how the two
+    /// are told apart.
+    /// </summary>
+    private static async Task ConfirmPreviewIfOneOpenedAsync(NCardGridSelectionScreen screen)
+    {
+        DateTime deadline = DateTime.UtcNow + PreviewConfirmWindow;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!ReferenceEquals(LiveGame.TopOverlay, screen))
+            {
+                return;
+            }
+
+            if (TryConfirmPreview(screen))
+            {
+                return;
+            }
+
+            await Task.Delay(PlaybackWait.PollInterval);
+        }
+    }
+
+    /// <summary>
+    /// The confirm inside a preview container, and only that: the screen's own confirm is what
+    /// opened the preview, and pressing it again would answer nothing.
+    /// </summary>
+    private static bool TryConfirmPreview(NCardGridSelectionScreen screen)
+    {
+        foreach (string container in PreviewContainers)
+        {
+            Control? preview = screen.GetNodeOrNull<Control>(container);
+            if (preview is { Visible: true }
+                && (ClickIfUsable(preview.GetNodeOrNull<NConfirmButton>("Confirm"))
+                    || ClickIfUsable(screen.GetNodeOrNull<NConfirmButton>("%PreviewConfirm"))))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static void ConfirmGrid(NCardGridSelectionScreen screen)
     {
         if (!TryConfirmGrid(screen))
@@ -394,14 +460,9 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
 
     private static bool TryConfirmGrid(NCardGridSelectionScreen screen)
     {
-        foreach (string container in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%EnchantSinglePreviewContainer", "%EnchantMultiPreviewContainer", "%PreviewContainer" })
+        if (TryConfirmPreview(screen))
         {
-            Control? preview = screen.GetNodeOrNull<Control>(container);
-            if (preview is { Visible: true }
-                && (ClickIfUsable(preview.GetNodeOrNull<NConfirmButton>("Confirm")) || ClickIfUsable(screen.GetNodeOrNull<NConfirmButton>("%PreviewConfirm"))))
-            {
-                return true;
-            }
+            return true;
         }
 
         if (ClickIfUsable(screen.GetNodeOrNull<NConfirmButton>("%Confirm")) || ClickIfUsable(screen.GetNodeOrNull<NConfirmButton>("Confirm")))
