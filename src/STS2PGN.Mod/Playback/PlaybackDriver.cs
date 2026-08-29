@@ -87,6 +87,17 @@ internal sealed class PlaybackDriver
                 ScriptDecision decision = _script.Decisions[index];
                 ScriptDecision? nextDecision = index + 1 < _script.Decisions.Count ? _script.Decisions[index + 1] : null;
                 _cancellation.ThrowIfCancellationRequested();
+
+                // A selection over a large pile is scripted one card at a time, every step naming
+                // the selection so far. The screen takes the whole selection as a single interaction
+                // and records it as a single answer, so the steps before the last are counted and
+                // passed over; the last one presses every card the run names and confirms once.
+                if (decision.ContinuedByNext)
+                {
+                    _report.DecisionsCompleted++;
+                    continue;
+                }
+
                 if (!await DriveAsync(decision, nextDecision))
                 {
                     return;
