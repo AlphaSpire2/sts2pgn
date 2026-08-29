@@ -416,9 +416,16 @@ internal sealed class PlaybackDriver
                 continue;
             }
 
-            bool matches = decision.Kind == "choice.index" && field == "indexes"
-                ? ScriptDecisionReader.SelectedIndexesMatch(expected, actual)
-                : LiveGame.SameJson(expected, actual);
+            bool matches = (decision.Kind, field) switch
+            {
+                ("choice.index", "indexes") => ScriptDecisionReader.SelectedIndexesMatch(expected, actual),
+                // What the recorder wrote down for the claim is read the same way
+                // the live offer is read before it: where the save schema refused
+                // the offer, the block it would have filled is missing from the
+                // record rather than disagreeing with the script.
+                ("reward.claim", "reward") => ScriptDecisionReader.RewardFingerprintMatches(expected, actual),
+                _ => LiveGame.SameJson(expected, actual),
+            };
             if (!matches)
             {
                 return field;
