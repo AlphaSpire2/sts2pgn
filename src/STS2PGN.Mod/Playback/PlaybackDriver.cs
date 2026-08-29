@@ -273,6 +273,7 @@ internal sealed class PlaybackDriver
                         ? HasCompletedEnemyTurnAfter(recordedTick)
                         : HasSettledAfter(recordedTick))
                     || (reachedNestedChoice = IsNextNestedChoiceReady(nextDecision))
+                    || ChoiceLeftNothingToSettle(decision)
                     || !RecorderService.IsRecording,
                 _timeout,
                 _cancellation);
@@ -321,6 +322,17 @@ internal sealed class PlaybackDriver
             GD.PrintErr($"[STS2PGN] Playback surface advance for {decision.Kind} threw: {exception.Message}");
         }
     }
+
+    /// <summary>
+    /// A choice asked at a turn boundary rather than from inside an action settles no action, so
+    /// the observation this wait looks for never arrives. Tools of the Trade asks for its discard
+    /// from the player turn's own start: the answer is accepted and recorded, and the next
+    /// observation comes only when the player acts — and the player is this driver, still waiting
+    /// here. Once the answer is recorded and the executor has gone idle with nothing over it, there
+    /// is nothing further to see.
+    /// </summary>
+    private static bool ChoiceLeftNothingToSettle(ScriptDecision decision) =>
+        decision.IsChoice && LiveGame.IsIdle;
 
     private static bool IsNextNestedChoiceReady(ScriptDecision? decision)
     {
