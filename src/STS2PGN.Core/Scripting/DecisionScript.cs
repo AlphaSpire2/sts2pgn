@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using STS2PGN.Model;
+using STS2PGN.Serialization;
 using STS2PGN.Parsing;
 using STS2PGN.Validation;
 
@@ -136,6 +137,81 @@ public sealed class ScriptDecision
     }
 
     public bool IsChoice => Kind.StartsWith("choice.", StringComparison.Ordinal);
+
+    /// <summary>
+    /// True when the next decision continues this one on the same selection screen, so that
+    /// answering this one on its own would be answering the screen early.
+    /// </summary>
+    /// <remarks>
+    /// A screen that wants several cards out of a large pile is authored one card at a time: each
+    /// decision names the selection so far plus one more, and every one of them carries the same
+    /// <c>choice_id</c>. The game takes the whole selection as one interaction and records it as one
+    /// answer, so a driver presses the cards the last decision of the run names and confirms once.
+    /// </remarks>
+    public bool ContinuedByNext { get; private set; }
+
+    internal void MarkContinuedByNext() => ContinuedByNext = true;
+
+    /// <summary>
+    /// Whether <paramref name="next"/> is the same selection screen carried one card further:
+    /// the same kind and choice, and a card list that keeps this one's cards, in order, and adds to
+    /// them. A decision that drops or reorders a card is a different answer, not a continuation.
+    /// </summary>
+    internal static bool IsContinuedBy(ScriptDecision current, ScriptDecision next)
+    {
+        if (current.Kind != "choice.cards" || next.Kind != "choice.cards")
+        {
+            return false;
+        }
+
+        if (!ScriptDecisionReader.TryGetInt(current.Data, "choice_id", out int currentChoice)
+            || !ScriptDecisionReader.TryGetInt(next.Data, "choice_id", out int nextChoice)
+            || currentChoice != nextChoice)
+        {
+            return false;
+        }
+
+        if (!TryGetCards(current.Data, out JsonElement currentCards)
+            || !TryGetCards(next.Data, out JsonElement nextCards)
+            || nextCards.GetArrayLength() <= currentCards.GetArrayLength())
+        {
+            return false;
+        }
+
+        JsonElement.ArrayEnumerator ahead = nextCards.EnumerateArray();
+        foreach (JsonElement card in currentCards.EnumerateArray())
+        {
+            if (!ahead.MoveNext() || !SameCard(card, ahead.Current))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryGetCards(JsonElement data, out JsonElement cards)
+    {
+        cards = default;
+        return data.ValueKind == JsonValueKind.Object
+            && data.TryGetProperty("cards", out cards)
+            && cards.ValueKind == JsonValueKind.Array;
+    }
+
+    private static bool SameCard(JsonElement left, JsonElement right)
+    {
+        try
+        {
+            return string.Equals(
+                CanonicalJson.Serialize(left),
+                CanonicalJson.Serialize(right),
+                StringComparison.Ordinal);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
 }
 
 /// <summary>
@@ -218,6 +294,14 @@ public sealed class DecisionScript
             if (ScriptProfile.DriveableKinds.Contains(entry.Kind))
             {
                 decisions.Add(new ScriptDecision(decisions.Count, entry));
+            }
+        }
+
+        for (int index = 0; index + 1 < decisions.Count; index++)
+        {
+            if (ScriptDecision.IsContinuedBy(decisions[index], decisions[index + 1]))
+            {
+                decisions[index].MarkContinuedByNext();
             }
         }
 

@@ -61,6 +61,67 @@ public sealed class DecisionScriptTests
         Assert.Equal([2L, 5L, 6L, 7L, 8L], script.Decisions.Select(decision => decision.Sequence));
     }
 
+    /// <summary>
+    /// A card selection over a large pile is authored one card at a time, every decision carrying
+    /// the same choice: only the last of the run is the whole answer the game takes and records.
+    /// </summary>
+    [Fact]
+    public void FromRecordMarksAChoiceContinuedByTheNextOne()
+    {
+        RunRecord record = TestRecordFactory.CreateScriptBuilder()
+            .AppendJson("run.start", TestRecordFactory.ScriptRunStart)
+            .AppendJson("event.choose", EventChoose)
+            .AppendJson("choice.cards", CardChoice(28, 4))
+            .AppendJson("choice.cards", CardChoice(28, 4, 5))
+            .AppendJson("choice.cards", CardChoice(28, 4, 5, 6))
+            .AppendJson("map.choose", TestRecordFactory.ScriptMapChoose)
+            .Build();
+
+        DecisionScript script = DecisionScript.FromRecord(record);
+
+        Assert.Equal(
+            ["event.choose", "choice.cards", "choice.cards", "choice.cards", "map.choose"],
+            script.Decisions.Select(decision => decision.Kind));
+        Assert.Equal(
+            [false, true, true, false, false],
+            script.Decisions.Select(decision => decision.ContinuedByNext));
+    }
+
+    [Fact]
+    public void FromRecordDoesNotJoinChoicesTheGameWouldAskSeparately()
+    {
+        RunRecord record = TestRecordFactory.CreateScriptBuilder()
+            .AppendJson("run.start", TestRecordFactory.ScriptRunStart)
+            .AppendJson("event.choose", EventChoose)
+            // A different screen: same shape, its own choice.
+            .AppendJson("choice.cards", CardChoice(28, 4))
+            .AppendJson("choice.cards", CardChoice(29, 4, 5))
+            // The same screen, but the second answer drops a card rather than adding one, so it is
+            // an answer of its own rather than the first one carried further.
+            .AppendJson("choice.cards", CardChoice(30, 4, 5))
+            .AppendJson("choice.cards", CardChoice(30, 5))
+            // The same screen and the same cards in a different order.
+            .AppendJson("choice.cards", CardChoice(31, 4, 5))
+            .AppendJson("choice.cards", CardChoice(31, 5, 4, 6))
+            .Build();
+
+        DecisionScript script = DecisionScript.FromRecord(record);
+
+        Assert.All(script.Decisions, decision => Assert.False(decision.ContinuedByNext));
+    }
+
+    private const string EventChoose =
+        "{\"actor\":\"p0\",\"data\":{\"event_id\":\"EVENT.TEZCATARA\",\"option_id\":\"A\",\"option_index\":0}}";
+
+    private static string CardChoice(int choiceId, params int[] deckIndexes)
+    {
+        string cards = string.Join(
+            ",",
+            deckIndexes.Select(index =>
+                $"{{\"deck_index\":{index},\"fingerprint\":{{\"model_id\":\"CARD.DEFEND_IRONCLAD\",\"upgrade_level\":0}}}}"));
+        return $"{{\"actor\":\"p0\",\"data\":{{\"choice_id\":{choiceId},\"choice_type\":\"deck_card\",\"cards\":[{cards}]}}}}";
+    }
+
     [Fact]
     public void FromRecordRejectsRecordings()
     {
