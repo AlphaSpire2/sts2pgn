@@ -46,6 +46,16 @@ internal sealed class MapDispatcher : IDecisionDispatcher
     /// </summary>
     public bool TryAdvanceSurface(ScriptDecision decision)
     {
+        // A treasure room is left by its own Proceed button, and that button is
+        // disabled until the chest has been opened. Where the chest holds a relic
+        // the script says so and the reward dispatcher opens it; where a relic has
+        // suppressed the chest there is nothing to pick, so the script goes from
+        // entering the room straight to proceeding and nothing else would open it.
+        if (decision.Kind == "room.proceed")
+        {
+            return TreasureChest.OpenIfClosed();
+        }
+
         if (decision.Kind != "map.choose" || NMapScreen.Instance is { IsOpen: true } || LiveGame.TopOverlay is not null)
         {
             return false;
