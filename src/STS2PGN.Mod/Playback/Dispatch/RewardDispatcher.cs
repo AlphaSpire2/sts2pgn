@@ -36,25 +36,8 @@ internal sealed class RewardDispatcher : IDecisionDispatcher
     /// is what actually obtains the relic and re-enables Proceed, fails on the empty holder list.
     /// Click the chest the way a player would and wait for the holders to appear.
     /// </summary>
-    public bool TryAdvanceSurface(ScriptDecision decision)
-    {
-        if (decision.Kind is not ("treasure.choose_relic" or "treasure.skip_relic")
-            || LiveGame.TopOverlay is not null
-            || NRun.Instance?.TreasureRoom is not { } room
-            || RelicCollection(room) is { Visible: true })
-        {
-            return false;
-        }
-
-        NButton? chest = room.GetNodeOrNull<NButton>("%Chest");
-        if (!LiveGame.IsUsable(chest))
-        {
-            return false;
-        }
-
-        chest!.ForceClick();
-        return true;
-    }
+    public bool TryAdvanceSurface(ScriptDecision decision) =>
+        decision.Kind is "treasure.choose_relic" or "treasure.skip_relic" && TreasureChest.OpenIfClosed();
 
     public VerifyResult Verify(ScriptDecision decision) => decision.Kind switch
     {
