@@ -633,7 +633,7 @@ internal static class RecorderService
                     potion_slot = potion.potionIndex,
                     potion_model = PotionModel(actor, potion.potionIndex),
                     target_id = potion.targetId,
-                    target = CombatTarget(potion.targetId),
+                    target = CombatTarget(potion.targetId, potion.targetPlayerId),
                     target_player = PlayerSlot(potion.targetPlayerId),
                     in_combat = potion.enqueuedInCombat,
                 }, actor);
@@ -959,7 +959,14 @@ internal static class RecorderService
             : null;
     }
 
-    private static object? CombatTarget(uint? combatId)
+    /// <summary>
+    /// Outside a fight there is no combat state to look a combat id up in, so the
+    /// creature is read off the player the action names instead. That is how the
+    /// game itself aims an out-of-combat drink: the potion settles on its owner's
+    /// creature, and the action carries that player. Without this the record of
+    /// every such drink names a target it cannot identify.
+    /// </summary>
+    private static object? CombatTarget(uint? combatId, ulong? targetPlayerId = null)
     {
         if (!combatId.HasValue)
         {
@@ -967,6 +974,12 @@ internal static class RecorderService
         }
 
         var creature = CombatManager.Instance.DebugOnlyGetState()?.GetCreature(combatId);
+        if (creature is null && targetPlayerId.HasValue)
+        {
+            creature = _state?.Players
+                .FirstOrDefault(candidate => candidate.NetId == targetPlayerId.Value)?.Creature;
+        }
+
         return new
         {
             combat_id = combatId.Value,
