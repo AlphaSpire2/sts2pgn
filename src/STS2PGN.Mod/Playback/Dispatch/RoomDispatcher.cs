@@ -3,7 +3,11 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Events;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Events;
+using MegaCrit.Sts2.Core.Nodes.Events.Custom;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
@@ -28,7 +32,8 @@ internal sealed class RoomDispatcher : IDecisionDispatcher
                 "event.choose" => NEventRoom.Instance is not null && CurrentEvent() is { IsFinished: false } current && current.CurrentOptions.Count > 0,
                 "event.advance" => DialogueHitbox() is not null,
                 "rest.choose" => NRestSiteRoom.Instance is not null && RunManager.Instance.RestSiteSynchronizer.GetLocalOptions().Count > 0,
-                "shop.purchase" or "shop.remove_card" => NMerchantRoom.Instance is { Inventory.IsOpen: true } && LocalInventory() is not null,
+                "shop.purchase" => ShelfIsOpen() && LocalInventory() is not null,
+                "shop.remove_card" => NMerchantRoom.Instance is { Inventory.IsOpen: true } && LocalInventory() is not null,
                 _ => false,
             };
         }
@@ -43,26 +48,45 @@ internal sealed class RoomDispatcher : IDecisionDispatcher
     /// Opening the merchant's inventory is presentation-only (the recorder writes nothing until a
     /// purchase is accepted), so a script goes from room entry straight to shop.purchase /
     /// shop.remove_card. Click the merchant the way a player would (<c>NMerchantButton</c> →
-    /// <c>MerchantOpened</c> → <c>NMerchantRoom.OpenInventory</c>).
+    /// <c>MerchantOpened</c> → <c>NMerchantRoom.OpenInventory</c>). The fake merchant's shelf
+    /// opens through the same button and the same signal, and is left the same way — the map
+    /// dispatcher clicks its back button on the way out.
     /// </summary>
     public bool TryAdvanceSurface(ScriptDecision decision)
     {
-        if (decision.Kind is not ("shop.purchase" or "shop.remove_card")
-            || LiveGame.TopOverlay is not null
-            || NMerchantRoom.Instance is not { } room
-            || room.Inventory is { IsOpen: true })
+        if (decision.Kind is not ("shop.purchase" or "shop.remove_card") || LiveGame.TopOverlay is not null)
         {
             return false;
         }
 
-        if (LiveGame.IsUsable(room.MerchantButton))
+        if (NMerchantRoom.Instance is { } room)
         {
-            room.MerchantButton.ForceClick();
+            if (room.Inventory is { IsOpen: true })
+            {
+                return false;
+            }
+
+            if (LiveGame.IsUsable(room.MerchantButton))
+            {
+                room.MerchantButton.ForceClick();
+                return true;
+            }
+
+            room.OpenInventory();
             return true;
         }
 
-        room.OpenInventory();
-        return true;
+        // The screen keeps its own opening private, so the button is the only way in.
+        if (decision.Kind == "shop.purchase"
+            && FakeMerchantScreen() is { } shelf
+            && shelf.Inventory is not { IsOpen: true }
+            && LiveGame.IsUsable(shelf.MerchantButton))
+        {
+            shelf.MerchantButton.ForceClick();
+            return true;
+        }
+
+        return false;
     }
 
     public VerifyResult Verify(ScriptDecision decision) => decision.Kind switch
@@ -205,18 +229,40 @@ internal sealed class RoomDispatcher : IDecisionDispatcher
             : VerifyResult.Mismatch("the scripted rest option is disabled", decision.Data, offered);
     }
 
+    /// <summary>
+    /// The inventory a purchase is answered against, which is not always a merchant room's: an
+    /// event that stocks a shelf of its own keeps one inventory per player on the event model,
+    /// built from the same entries and bought through the same purchase wrapper.
+    /// </summary>
     private static MerchantInventory? LocalInventory()
     {
         RunState? state = LiveGame.State;
         Player? me = LiveGame.LocalPlayer;
-        if (state?.CurrentRoom is not MerchantRoom room || me is null)
+        if (me is null)
         {
             return null;
+        }
+
+        if (state?.CurrentRoom is not MerchantRoom room)
+        {
+            EventSynchronizer events = RunManager.Instance.EventSynchronizer;
+            return events.Events.Count > 0 && events.GetEventForPlayer(me) is FakeMerchant fake ? fake.Inventory : null;
         }
 
         int slot = state.GetPlayerSlotIndex(me);
         return slot >= 0 && slot < room.Inventories.Count ? room.Inventories[slot] : null;
     }
+
+    /// <summary>
+    /// The fake merchant's screen, which is an event's rather than a room's: the shelf stands
+    /// inside the event room, on the same inventory and merchant-button nodes a merchant uses.
+    /// </summary>
+    private static NFakeMerchant? FakeMerchantScreen() =>
+        NRun.Instance?.EventRoom is { } room ? LiveGame.FindFirst<NFakeMerchant>(room) : null;
+
+    /// <summary>Whether a stocked shelf — a merchant's or an event's — has its inventory open.</summary>
+    private static bool ShelfIsOpen() =>
+        NMerchantRoom.Instance is { Inventory.IsOpen: true } || FakeMerchantScreen() is { Inventory.IsOpen: true };
 
     private static object EntryListing(MerchantInventory inventory) =>
         inventory.AllEntries.Select((entry, index) => new
