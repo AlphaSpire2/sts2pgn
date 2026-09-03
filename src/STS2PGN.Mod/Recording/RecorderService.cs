@@ -29,6 +29,7 @@ internal static class RecorderService
     private static readonly Dictionary<(ulong PlayerId, uint ChoiceId), JsonElement> ChoiceOffers = [];
     private static readonly Dictionary<ulong, CardReward> ActiveCardRewards = [];
     private static readonly Dictionary<(ulong PlayerId, int SetId), RewardsSet> ActiveRewardSets = [];
+    private static CombatRoom? _lastCombatRoomWithRewards;
     private static readonly Dictionary<ulong, long> PendingRestActions = [];
     private static readonly Dictionary<GameAction, long> ActionSequences = [];
     private static readonly FieldInfo? CurrentRoomsField = typeof(RunState).GetField(
@@ -71,6 +72,11 @@ internal static class RecorderService
 
     public static IEnumerable<RewardsSet> ActiveRewardSetsFor(ulong playerId) =>
         ActiveRewardSets.Where(pair => pair.Key.PlayerId == playerId).Select(pair => pair.Value);
+
+    // Retained after the set closes: the belt remains usable after rewards
+    // have been dismissed, until the player leaves this room.
+    public static bool HasOfferedCombatRewards(CombatRoom room) =>
+        ReferenceEquals(_lastCombatRoomWithRewards, room);
 
     public static void Initialize()
     {
@@ -258,6 +264,10 @@ internal static class RecorderService
     public static void BeginRewardsSet(RewardsSet set)
     {
         ActiveRewardSets[(set.Player.NetId, set.Id)] = set;
+        if (set.Room is CombatRoom combatRoom)
+        {
+            _lastCombatRoomWithRewards = combatRoom;
+        }
         ObserveAfter(_lastDecisionSequence, "reward.offered");
     }
 
@@ -509,6 +519,7 @@ internal static class RecorderService
             LiveChoiceOffers.Clear();
             ActiveCardRewards.Clear();
             ActiveRewardSets.Clear();
+            _lastCombatRoomWithRewards = null;
             PendingRestActions.Clear();
             ActionSequences.Clear();
             RunManager.Instance.ActionQueueSet.ActionEnqueued += OnActionEnqueued;
@@ -997,6 +1008,7 @@ internal static class RecorderService
             LiveChoiceOffers.Clear();
             ActiveCardRewards.Clear();
             ActiveRewardSets.Clear();
+            _lastCombatRoomWithRewards = null;
             PendingRestActions.Clear();
             ActionSequences.Clear();
             _lastDecisionSequence = null;
@@ -1033,6 +1045,7 @@ internal static class RecorderService
         LiveChoiceOffers.Clear();
         ActiveCardRewards.Clear();
         ActiveRewardSets.Clear();
+        _lastCombatRoomWithRewards = null;
         PendingRestActions.Clear();
         ActionSequences.Clear();
         _lastDecisionSequence = null;

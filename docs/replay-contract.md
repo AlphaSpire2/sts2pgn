@@ -365,3 +365,14 @@ Every recorder observation is a full projection. A simulator must settle the pre
 input using its own equivalent boundary, then return the requested scope. Presentation,
 animation, localized text, timestamps, and mod-specific state remain outside version 1;
 modded runs are not a supported compatibility target.
+
+### Playback potion readiness after combat
+
+For a combat room that gives rewards, an out-of-combat potion use or discard
+waits until the recorder has observed that room's reward offer. The game's
+combat-in-progress flag clears before victory cleanup and reward generation
+finish, and an idle executor alone does not guarantee those tasks have finished.
+Accepting a potion during that gap can make a transient lethal-card observation
+the last checkpoint before the next decision. Readiness remains true after the
+reward set is dismissed; it is scoped to the room and reset with the recording
+session. Noncombat rooms and combats without rewards retain their existing flow.
