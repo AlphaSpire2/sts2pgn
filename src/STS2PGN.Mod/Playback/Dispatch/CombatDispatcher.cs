@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Rooms;
 using STS2PGN.Mod.Recording;
 using STS2PGN.Scripting;
 
@@ -38,7 +39,15 @@ internal sealed class CombatDispatcher : IDecisionDispatcher
             && !(ScriptDecisionReader.TryGetBool(decision.Data, "in_combat", out bool scriptedInCombat)
                 && scriptedInCombat))
         {
-            return true;
+            // IsInProgress goes false before victory cleanup and reward
+            // generation finish. The executor can already be idle here, but
+            // accepting a belt action would make the lethal card's transient
+            // observation the last checkpoint before another decision. Wait
+            // for this room's reward offer, retaining readiness after it closes.
+            return !CombatManager.Instance.IsStarting
+                && (LiveGame.State?.CurrentRoom is not CombatRoom { ShouldCreateCombat: true } room
+                    || !room.Encounter.ShouldGiveRewards
+                    || RecorderService.HasOfferedCombatRewards(room));
         }
 
         // Phase must be Play: CombatManager.StartCombatInternal sets IsInProgress (and clears
