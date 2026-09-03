@@ -240,11 +240,10 @@ public sealed class Sts2PgnValidatorScriptModeTests
     {
         RunRecord record = TestRecordFactory.CreateScriptBuilder()
             .AppendJson("run.start", TestRecordFactory.ScriptRunStart)
-            .AppendJson("map.choose", TestRecordFactory.ScriptMapChoose)
             .AppendJson("choice.cards", CardChoice)
             .Build();
 
-        Assert.Contains(ValidateScript(record).Errors, issue => issue.Code == "script_orphan_choice" && issue.Location == "sequence:3");
+        Assert.Contains(ValidateScript(record).Errors, issue => issue.Code == "script_orphan_choice" && issue.Location == "sequence:2");
     }
 
     [Fact]
@@ -252,6 +251,8 @@ public sealed class Sts2PgnValidatorScriptModeTests
     {
         RunRecord record = TestRecordFactory.CreateScriptBuilder()
             .AppendJson("run.start", TestRecordFactory.ScriptRunStart)
+            .AppendJson("map.choose", TestRecordFactory.ScriptMapChoose)
+            .AppendJson("choice.cards", CardChoice)
             .AppendJson("combat.play_card", PlayCard)
             .AppendJson("choice.cards", CardChoice)
             .AppendJson("choice.cards", CardChoice)

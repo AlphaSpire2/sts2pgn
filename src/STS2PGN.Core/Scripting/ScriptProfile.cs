@@ -36,6 +36,7 @@ public static class ScriptProfile
         "combat.play_card",
         "combat.use_potion",
         "event.choose",
+        "map.choose",
         "reward.claim",
         "rest.choose",
         "shop.purchase",
