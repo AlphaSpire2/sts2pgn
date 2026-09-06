@@ -1,3 +1,4 @@
+using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.RestSite;
@@ -20,6 +21,12 @@ namespace STS2PGN.Mod.Playback.Dispatch;
 /// <summary>event.choose, event.advance, rest.choose, shop.purchase, shop.remove_card.</summary>
 internal sealed class RoomDispatcher : IDecisionDispatcher
 {
+    // Nested reward observations can arrive before an event option changes its
+    // page. The executor can already be idle then; the event's own tasks are
+    // what determine whether another option can be chosen.
+    private static readonly AccessTools.FieldRef<EventSynchronizer, List<Task>> PendingOptionTasks =
+        AccessTools.FieldRefAccess<EventSynchronizer, List<Task>>("_pendingOptionTasks");
+
     public bool Handles(string kind) =>
         kind is "event.choose" or "event.advance" or "rest.choose" or "shop.purchase" or "shop.remove_card";
 
@@ -29,7 +36,9 @@ internal sealed class RoomDispatcher : IDecisionDispatcher
         {
             return decision.Kind switch
             {
-                "event.choose" => NEventRoom.Instance is not null && CurrentEvent() is { IsFinished: false } current && current.CurrentOptions.Count > 0,
+                "event.choose" => NEventRoom.Instance is not null
+                    && PendingOptionTasks(RunManager.Instance.EventSynchronizer).All(task => task.IsCompleted)
+                    && CurrentEvent() is { IsFinished: false } current && current.CurrentOptions.Count > 0,
                 "event.advance" => DialogueHitbox() is not null,
                 "rest.choose" => NRestSiteRoom.Instance is not null && RunManager.Instance.RestSiteSynchronizer.GetLocalOptions().Count > 0,
                 "shop.purchase" => ShelfIsOpen() && LocalInventory() is not null,

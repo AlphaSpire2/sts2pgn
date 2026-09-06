@@ -152,30 +152,6 @@ internal sealed class PlaybackDriver
             return false;
         }
 
-        // Some terminal combat flows proceed without another click. In
-        // particular, Battleworn Dummy's timer expiring records room.proceed
-        // while the preceding end-turn action is settling. If that is the next
-        // scripted decision, it has already happened and must be consumed
-        // instead of waiting forever for a rewards screen that has closed.
-        if (decision.Kind == "room.proceed"
-            && FindRecorded(decision.Kind, _lastMatchedDecisionSequence) is { } automatic)
-        {
-            if (FindRecordedMismatch(decision, automatic.Data) is { } automaticMismatch)
-            {
-                _report.Stop(
-                    PlaybackStatus.StoppedAtRecord,
-                    PlaybackReasons.RecordedMismatch,
-                    $"the game automatically accepted a different '{automaticMismatch}' than the script",
-                    decision);
-                _report.Expected = decision.Data;
-                _report.Offered = automatic.Data;
-                return false;
-            }
-
-            _lastMatchedDecisionSequence = automatic.Sequence;
-            return true;
-        }
-
         PresentationDelay? advanceGate = null;
         // Anchored to the screen being up rather than to the offer being registered: a selection
         // screen ignores presses while it animates in, and the gap between "offer registered" and
@@ -184,6 +160,16 @@ internal sealed class PlaybackDriver
         bool ready = await PlaybackWait.TryUntilAsync(
             () =>
             {
+                // A fight can proceed automatically while this wait is in progress,
+                // after the preceding card's action observation already settled.
+                // Consume that record before considering the parent event's loot
+                // screen: clicking it would submit a second room.proceed.
+                if (decision.Kind == "room.proceed"
+                    && FindRecorded(decision.Kind, _lastMatchedDecisionSequence) is not null)
+                {
+                    return true;
+                }
+
                 // Nested choices and the Crystal Sphere minigame are asked while the initiating
                 // event action is still executing, so they cannot wait for the executor to go idle;
                 // an open modal still blocks them.
@@ -218,6 +204,30 @@ internal sealed class PlaybackDriver
             _report.Stop(PlaybackStatus.GameError, PlaybackReasons.Timeout, $"the game never reached a state where {decision.Kind} could be submitted", decision);
             _report.Offered = LiveGame.ToJson(DescribeSurface());
             return false;
+        }
+
+        // Some terminal combat flows proceed without another click. In
+        // particular, Battleworn Dummy's timer expiring records room.proceed
+        // while the preceding end-turn action is settling. If that is the next
+        // scripted decision, it has already happened and must be consumed
+        // instead of waiting forever for a rewards screen that has closed.
+        if (decision.Kind == "room.proceed"
+            && FindRecorded(decision.Kind, _lastMatchedDecisionSequence) is { } automatic)
+        {
+            if (FindRecordedMismatch(decision, automatic.Data) is { } automaticMismatch)
+            {
+                _report.Stop(
+                    PlaybackStatus.StoppedAtRecord,
+                    PlaybackReasons.RecordedMismatch,
+                    $"the game automatically accepted a different '{automaticMismatch}' than the script",
+                    decision);
+                _report.Expected = decision.Data;
+                _report.Offered = automatic.Data;
+                return false;
+            }
+
+            _lastMatchedDecisionSequence = automatic.Sequence;
+            return true;
         }
 
         VerifyResult verification;
@@ -281,7 +291,7 @@ internal sealed class PlaybackDriver
                 () => (finalEndTurn
                         ? HasCompletedEnemyTurnAfter(recordedTick)
                         : HasSettledAfter(recordedTick))
-                    || IsNextNestedChoiceReady(nextDecision)
+                    || IsNextNestedDecisionReady(nextDecision)
                     || ChoiceLeftNothingToSettle(decision)
                     || !RecorderService.IsRecording,
                 _timeout,
@@ -336,11 +346,28 @@ internal sealed class PlaybackDriver
     private static bool ChoiceLeftNothingToSettle(ScriptDecision decision) =>
         decision.IsChoice && LiveGame.IsIdle;
 
-    private static bool IsNextNestedChoiceReady(ScriptDecision? decision)
+    private static bool IsNextNestedDecisionReady(ScriptDecision? decision)
     {
-        if (decision is not { IsChoice: true })
+        if (decision is null)
         {
             return false;
+        }
+
+        if (!decision.IsChoice)
+        {
+            // An out-of-combat belt action can be scripted while a smith or
+            // event selection is open. The initiating task cannot settle until
+            // that later selection is answered, so allow the intervening potion
+            // through once a live choice exists and its normal readiness holds.
+            if (decision.Kind is not ("combat.use_potion" or "combat.discard_potion")
+                || !ScriptDecisionReader.TryGetBool(decision.Data, "in_combat", out bool inCombat)
+                || inCombat
+                || !LiveGame.IsIdle
+                || LiveGame.LocalPlayer is not { } me
+                || !RecorderService.PendingLiveOffers(me.NetId).Any())
+            {
+                return false;
+            }
         }
 
         IDecisionDispatcher? dispatcher = Dispatchers.FirstOrDefault(candidate => candidate.Handles(decision.Kind));

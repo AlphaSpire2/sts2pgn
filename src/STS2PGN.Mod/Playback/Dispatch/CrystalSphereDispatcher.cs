@@ -80,6 +80,24 @@ internal sealed class CrystalSphereDispatcher : IDecisionDispatcher
     public bool SettlesByObservation(ScriptDecision decision) =>
         decision.Kind != "event.crystal_sphere.proceed";
 
+    /// <summary>
+    /// A finished board can remain over the event after its rewards settle.
+    /// Producers may go straight to map.choose because this button only leaves
+    /// the completed minigame; the recorder still captures the real click.
+    /// </summary>
+    public static bool TryProceedFinished()
+    {
+        if (LiveGame.TopOverlay is not NCrystalSphereScreen screen
+            || !Entity(screen).IsFinished
+            || !LiveGame.IsUsable(ProceedButton(screen)))
+        {
+            return false;
+        }
+
+        ProceedButton(screen)!.ForceClick();
+        return true;
+    }
+
     private static VerifyResult VerifyTool(ScriptDecision decision)
     {
         NCrystalSphereScreen screen = (NCrystalSphereScreen)LiveGame.TopOverlay!;
