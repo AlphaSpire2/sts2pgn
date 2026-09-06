@@ -56,6 +56,11 @@ internal sealed class MapDispatcher : IDecisionDispatcher
             return TreasureChest.OpenIfClosed();
         }
 
+        if (decision.Kind == "map.choose" && CrystalSphereDispatcher.TryProceedFinished())
+        {
+            return true;
+        }
+
         if (decision.Kind != "map.choose" || NMapScreen.Instance is { IsOpen: true } || LiveGame.TopOverlay is not null)
         {
             return false;

@@ -376,3 +376,33 @@ Accepting a potion during that gap can make a transient lethal-card observation
 the last checkpoint before the next decision. Readiness remains true after the
 reward set is dismissed; it is scoped to the room and reset with the recording
 session. Noncombat rooms and combats without rewards retain their existing flow.
+### Playback transitions after automatic event completion
+
+The driver checks for an already recorded `room.proceed` on every readiness
+poll, before submitting a click. An event combat can proceed automatically
+after the preceding card's action observation has arrived. The scripted proceed
+consumes that automatic record even if it arrived during the wait; it must not
+click the parent event's reward screen and produce a second proceed.
+
+A script may go directly from Crystal Sphere's final divination to `map.choose`.
+When the minigame is finished and its own Proceed button is enabled, playback
+clicks that button to leave the overlay. The real click is still recorded as
+`event.crystal_sphere.proceed`. An unfinished board or a reward overlay is never
+dismissed by this transition; explicit reward and minigame decisions retain
+their normal verification.
+
+Event-option readiness also waits for the event synchronizer's pending option
+tasks to complete. A nested reward observation and an idle action executor do
+not mean the event has finished updating its page. Card choices and rewards
+inside that task remain independently drivable.
+
+When a live selection suspends a rest or event task, an intervening scripted
+out-of-combat potion use or discard can run before the selection is answered.
+The driver requires a pending choice, an idle executor, and normal potion
+readiness; it does not wait for the suspended task to finish first.
+
+An empty deck-enchantment choice bypasses the main confirm, whose handler does
+nothing when no card is selected. On a cancelable screen, playback emits the
+close button's Released signal so the screen's completion source resolves. On
+a non-cancelable screen, playback stops with a fingerprint mismatch before
+submission because the game has no input that can produce an empty result.

@@ -98,6 +98,17 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
             return VerifyResult.Mismatch("the game offers different cards than the script expects", decision.Data, offer.Offered);
         }
 
+        if (decision.Kind == "choice.cards"
+            && ScriptDecisionReader.GetCardSelections(decision.Data).Count == 0
+            && ScreenFor(offer) is NDeckEnchantSelectScreen enchantScreen
+            && FindUsableCancel(enchantScreen) is null)
+        {
+            return VerifyResult.Mismatch(
+                "the script skips a non-cancelable deck enchantment choice",
+                decision.Data,
+                new { cancelable = false, offer = offer.Offered });
+        }
+
         return VerifyCardSelections(me, decision, offer.Models as IReadOnlyList<CardModel>);
     }
 
@@ -202,6 +213,13 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
                     if (any)
                     {
                         ConfirmGrid(gridScreen);
+                    }
+                    else if (gridScreen is NDeckEnchantSelectScreen)
+                    {
+                        // An empty enchant choice means the player closed the
+                        // cancelable screen. Its main confirm may be enabled,
+                        // but confirms nothing when no card is selected.
+                        CancelGrid(gridScreen);
                     }
                     else if (!TryConfirmGrid(gridScreen))
                     {
@@ -474,15 +492,27 @@ internal sealed class ChoiceDispatcher : IDecisionDispatcher
         return ClickIfUsable(fallback);
     }
 
+    private static NBackButton? FindUsableCancel(NCardGridSelectionScreen screen)
+    {
+        NBackButton? named = screen.GetNodeOrNull<NBackButton>("%Close");
+        return LiveGame.IsUsable(named)
+            ? named
+            : LiveGame.FindAll<NBackButton>(screen).FirstOrDefault(LiveGame.IsUsable);
+    }
+
     private static void CancelGrid(NCardGridSelectionScreen screen)
     {
-        if (ClickIfUsable(screen.GetNodeOrNull<NBackButton>("%Close"))
-            || ClickIfUsable(LiveGame.FindAll<NBackButton>(screen).FirstOrDefault(LiveGame.IsUsable)))
+        NBackButton? close = FindUsableCancel(screen);
+        if (close is null)
         {
-            return;
+            throw new InvalidOperationException("No usable cancel button on the selection screen.");
         }
 
-        throw new InvalidOperationException("No usable cancel button on the selection screen.");
+        // NDeckEnchantSelectScreen completes an empty, cancelable choice from
+        // the back button's Released handler. ForceClick does not emit that
+        // signal on this screen in headless playback, leaving the overlay and
+        // choice task open. Emit the same signal the button connects in _Ready.
+        close.EmitSignal(NClickableControl.SignalName.Released, close);
     }
 
     private static bool ClickIfUsable(NClickableControl? control)
