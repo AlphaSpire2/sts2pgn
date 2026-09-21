@@ -30,7 +30,7 @@ internal static class TestRecordFactory
         new RunRecordBuilder()
             .AddTag("Format", "STS2PGN")
             .AddTag("FormatVersion", "1")
-            .AddTag("Producer", "spirefish/0.1.0")
+            .AddTag("Producer", "alphaspire/0.1.0")
             .AddTag("Seed", "TESTSEED")
             .AddTag("Mode", "CUSTOM")
             .AddTag("Ascension", "0")
