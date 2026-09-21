@@ -207,7 +207,7 @@ Producer identity decides the profile:
 | Tag | Recording | Script |
 |---|---|---|
 | `RecorderVersion` | required | forbidden (`script_carries_recorder_version`) |
-| `Producer` | forbidden (`recording_carries_producer`) | required, `name/version` with a lowercase `[a-z0-9_-]` name, for example `spirefish/0.3.1` |
+| `Producer` | forbidden (`recording_carries_producer`) | required, `name/version` with a lowercase `[a-z0-9_-]` name, for example `alphaspire/0.3.1` |
 
 No file carries both. A file with `Producer` is a proposal and is never an
 authoritative fixture.

@@ -13,7 +13,7 @@ public sealed class DecisionScriptTests
     {
         DecisionScript script = DecisionScript.FromRecord(TestRecordFactory.CreateValidScript());
 
-        Assert.Equal("spirefish/0.1.0", script.Identity.Producer);
+        Assert.Equal("alphaspire/0.1.0", script.Identity.Producer);
         Assert.Equal("TESTSEED", script.Identity.Seed);
         Assert.Equal("CUSTOM", script.Identity.Mode);
         Assert.Equal(0, script.Identity.Ascension);
@@ -216,10 +216,10 @@ public sealed class DecisionScriptTests
     }
 
     [Theory]
-    [InlineData("spirefish/0.1.0", true, "spirefish", "0.1.0")]
+    [InlineData("alphaspire/0.1.0", true, "alphaspire", "0.1.0")]
     [InlineData("sts2-sim_2/2026.08.20+abc", true, "sts2-sim_2", "2026.08.20+abc")]
-    [InlineData("spirefish", false, "", "")]
-    [InlineData("Spirefish/1", false, "", "")]
+    [InlineData("alphaspire", false, "", "")]
+    [InlineData("Alphaspire/1", false, "", "")]
     public void ProducerParsing(string value, bool expected, string name, string version)
     {
         Assert.Equal(expected, ScriptProfile.TryParseProducer(value, out string parsedName, out string parsedVersion));

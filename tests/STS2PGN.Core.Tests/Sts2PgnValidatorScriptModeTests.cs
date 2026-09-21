@@ -41,7 +41,7 @@ public sealed class Sts2PgnValidatorScriptModeTests
     public void RecordingModeRejectsProducerOnAnOtherwiseValidRecording()
     {
         RunRecord record = TestRecordFactory.CreateBuilder()
-            .AddTag("Producer", "spirefish/0.1.0")
+            .AddTag("Producer", "alphaspire/0.1.0")
             .AppendJson("run.start", "{\"data\":{}}")
             .Build();
 
@@ -59,10 +59,10 @@ public sealed class Sts2PgnValidatorScriptModeTests
     }
 
     [Theory]
-    [InlineData("spirefish")]
+    [InlineData("alphaspire")]
     [InlineData("/1.0")]
-    [InlineData("Spirefish/1.0")]
-    [InlineData("spirefish/1 0")]
+    [InlineData("Alphaspire/1.0")]
+    [InlineData("alphaspire/1 0")]
     public void ScriptModeRejectsInvalidProducerShape(string producer)
     {
         RunRecord record = TestRecordFactory.CreateScriptBuilder()
