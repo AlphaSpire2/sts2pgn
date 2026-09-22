@@ -135,30 +135,31 @@ After building, copy these files to the game's `mods/` directory:
 ```text
 STS2_PGN.dll
 STS2_PGN.json
-config.json
+STS2_PGN.config.json
 ```
 
 `STS2_PGN.dll` includes the portable Core implementation because STS2 does not resolve arbitrary sibling DLL dependencies. The separately built `STS2PGN.Core.dll` is for simulator integrations, command-line tools, and tests; do not install it with the mod.
 
 The game requires the manifest filename to match the mod ID. The source manifest is named `mod_manifest.json`, but the build output renames it to `STS2_PGN.json`.
 
-The mod starts a trace when a supported single-player run launches. Traces are stored under the active profile's `sts2pgn/` directory. Metadata and every accepted action are flushed through to disk immediately, so a crash or save-and-quit leaves a parseable incomplete prefix.
+The mod starts a trace when a supported single-player run launches. By default, traces are stored in the `sts2pgn/` directory under the user's system Documents directory. Metadata and every accepted action are flushed through to disk immediately, so a crash or save-and-quit leaves a parseable incomplete prefix.
 
-The output directory is configured in `config.json`, installed beside `STS2_PGN.dll`:
+The output directory is configured in `STS2_PGN.config.json`, installed beside `STS2_PGN.dll`:
 
 ```json
 {
-  "output_directory": "sts2pgn",
+  "output_directory": "documents://sts2pgn",
   "playback_timeout_seconds": 30,
   "record_playback_runs": true,
   "fast_playback": true
 }
 ```
 
+- A `documents://` path is resolved beneath the user's system Documents directory.
 - A relative directory such as `sts2pgn` is resolved beneath the active STS2 profile.
 - An absolute OS path writes directly to that directory.
 - A Godot path such as `user://my-replays` is converted to its native OS path.
-- A missing or invalid configuration falls back to the profile-scoped `sts2pgn` directory and logs the reason.
+- A missing or invalid configuration uses `documents://sts2pgn`. If the system Documents directory cannot be located, the mod falls back to the profile-scoped `sts2pgn` directory and logs the reason.
 
 - `playback_timeout_seconds` bounds how long the playback driver waits for any single step.
 - `fast_playback` drops presentation pacing for the duration of a playback batch. See
@@ -212,8 +213,8 @@ recording prefix:
 # One script, a directory of scripts, or a .txt list (one path per line); quits with an exit code
 "Slay the Spire 2" --sts2pgn-script="C:\scripts\batch"
 
-# Optional: override config.json's output_directory for this launch only. Required when running
-# several playback processes at once, because they all read the same installed config.json.
+# Optional: override STS2_PGN.config.json's output_directory for this launch only. Required when
+# running several playback processes at once, because they all read the same installed config.
 "Slay the Spire 2" --sts2pgn-script="C:\scripts\batch" --sts2pgn-out="C:\out\batch-1"
 ```
 
@@ -372,7 +373,7 @@ headless/automated testing".
 Two concurrent instances ran the five-script batch with every stop point and every trace matching
 the serial reference. Instances need isolating in two places:
 
-- **Reports and traces.** All instances share the installed `config.json`, so pass
+- **Reports and traces.** All instances share the installed `STS2_PGN.config.json`, so pass
   `--sts2pgn-out=<dir>` to give each process its own output directory. Without it their
   `playback-summary.json` files overwrite each other.
 - **`user://`.** Saves, profile progress, and logs live there. On Windows Godot resolves `user://`

@@ -13,7 +13,7 @@ internal sealed record RecorderConfig(
     bool RecordPlaybackRuns = RecorderConfig.DefaultRecordPlaybackRuns,
     PlaybackSpeedLevers FastPlayback = RecorderConfig.DefaultFastPlayback)
 {
-    public const string FileName = "config.json";
+    public const string FileName = "STS2_PGN.config.json";
 
     /// <summary>
     /// <c>--sts2pgn-out=&lt;dir&gt;</c> overrides <c>output_directory</c> for one launch. Concurrent
@@ -21,7 +21,9 @@ internal sealed record RecorderConfig(
     /// given its own report and trace directory.
     /// </summary>
     public const string OutputDirectoryArg = "sts2pgn-out";
-    public const string DefaultOutputDirectory = "sts2pgn";
+    public const string DocumentsPrefix = "documents://";
+    public const string ProfileFallbackOutputDirectory = "sts2pgn";
+    public const string DefaultOutputDirectory = DocumentsPrefix + ProfileFallbackOutputDirectory;
     public const int DefaultPlaybackTimeoutSeconds = 30;
     public const bool DefaultRecordPlaybackRuns = true;
     /// <summary>
@@ -148,6 +150,11 @@ internal sealed record RecorderConfig(
 
     public string ResolveOutputDirectory()
     {
+        if (OutputDirectory.StartsWith(DocumentsPrefix, StringComparison.Ordinal))
+        {
+            return ResolveDocumentsOutputDirectory();
+        }
+
         if (OutputDirectory.StartsWith("user://", StringComparison.Ordinal)
             || OutputDirectory.StartsWith("res://", StringComparison.Ordinal))
         {
@@ -162,6 +169,35 @@ internal sealed record RecorderConfig(
         string profilePath = SaveManager.Instance.GetProfileScopedPath(OutputDirectory);
         return ProjectSettings.GlobalizePath(profilePath);
     }
+
+    private string ResolveDocumentsOutputDirectory()
+    {
+        string documentsDirectory = Godot.OS.GetSystemDir(Godot.OS.SystemDir.Documents);
+        if (string.IsNullOrWhiteSpace(documentsDirectory))
+        {
+            GD.PrintErr("[STS2PGN] Could not locate the system Documents directory; using the profile-scoped output directory");
+            return ResolveProfileFallbackOutputDirectory();
+        }
+
+        string relativePath = OutputDirectory[DocumentsPrefix.Length..]
+            .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string documentsRoot = Path.GetFullPath(documentsDirectory);
+        string resolvedPath = Path.GetFullPath(Path.Combine(documentsRoot, relativePath));
+        string relativeToDocuments = Path.GetRelativePath(documentsRoot, resolvedPath);
+        if (Path.IsPathFullyQualified(relativeToDocuments)
+            || relativeToDocuments.Equals("..", StringComparison.Ordinal)
+            || relativeToDocuments.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+            || relativeToDocuments.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal))
+        {
+            GD.PrintErr($"[STS2PGN] '{OutputDirectory}' escapes the system Documents directory; using the profile-scoped output directory");
+            return ResolveProfileFallbackOutputDirectory();
+        }
+
+        return resolvedPath;
+    }
+
+    private static string ResolveProfileFallbackOutputDirectory() =>
+        ProjectSettings.GlobalizePath(SaveManager.Instance.GetProfileScopedPath(ProfileFallbackOutputDirectory));
 
     private static RecorderConfig Default() => new(DefaultOutputDirectory);
 }
