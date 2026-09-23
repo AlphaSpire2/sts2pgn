@@ -1,5 +1,6 @@
 using STS2PGN.Model;
 using STS2PGN.Parsing;
+using STS2PGN.Serialization;
 using STS2PGN.Validation;
 
 namespace STS2PGN.Tool;
@@ -50,7 +51,7 @@ internal static class TraceLoader
 
         if (paths.Count == 0)
         {
-            throw new ToolUsageException("expected at least one .sts2pgn file");
+            throw new ToolUsageException("expected at least one .sts2pgn or .sts2pgn.gz file");
         }
 
         return new ToolArguments(paths, new Sts2PgnParseOptions { RecoverTruncatedFinalLine = recover }, quiet, mode);
@@ -58,7 +59,7 @@ internal static class TraceLoader
 
     public static LoadedTrace Load(string path, Sts2PgnParseOptions options)
     {
-        using StreamReader reader = new(path);
+        using StreamReader reader = Sts2PgnFile.OpenText(path);
         return new LoadedTrace(path, Sts2PgnParser.Parse(reader, options));
     }
 }

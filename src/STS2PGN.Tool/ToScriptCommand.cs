@@ -49,7 +49,10 @@ internal static class ToScriptCommand
         }
 
         string path = paths[0];
-        output ??= Path.ChangeExtension(path, null) + ".script" + FormatConstants.FileExtension;
+        string uncompressedPath = path.EndsWith(Sts2PgnFile.GzipExtension, StringComparison.OrdinalIgnoreCase)
+            ? Path.ChangeExtension(path, null)
+            : path;
+        output ??= Path.ChangeExtension(uncompressedPath, null) + ".script" + FormatConstants.FileExtension;
         try
         {
             RunRecord recording = TraceLoader.Load(path, new Sts2PgnParseOptions { RecoverTruncatedFinalLine = false }).Record;
@@ -60,7 +63,7 @@ internal static class ToScriptCommand
             Console.WriteLine($"{output}: script with {decisions} decisions from {recording.Entries.Count} recorded records");
             return 0;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Sts2PgnParseException or Sts2PgnValidationException or ArgumentException)
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or Sts2PgnParseException or Sts2PgnValidationException or ArgumentException)
         {
             Console.Error.WriteLine($"{path}: {exception.Message}");
             return 1;

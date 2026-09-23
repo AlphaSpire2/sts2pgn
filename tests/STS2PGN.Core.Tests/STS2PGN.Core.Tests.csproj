@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/STS2PGN.Core/STS2PGN.Core.csproj" />
+    <ProjectReference Include="../../src/STS2PGN.Tool/STS2PGN.Tool.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>
 

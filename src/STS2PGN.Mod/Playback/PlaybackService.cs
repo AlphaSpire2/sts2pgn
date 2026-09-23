@@ -224,6 +224,15 @@ internal static class PlaybackService
 
             if (!handedOff)
             {
+                // Natural completion replaces the path captured when playback started.
+                // Incomplete playback and handoff recordings remain plain and resumable.
+                if (report.RecordingPath is { } recordingPath
+                    && !File.Exists(recordingPath)
+                    && File.Exists(recordingPath + ".gz"))
+                {
+                    report.RecordingPath = recordingPath + ".gz";
+                }
+
                 RecorderService.ExecuteSafely("capturing live unlocks after playback", () =>
                     report.UnlocksAfterRun = PlaybackUnlocks.From(ScriptPreflight.CurrentLiveUnlocks()));
             }

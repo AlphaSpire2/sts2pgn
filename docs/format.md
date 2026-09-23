@@ -17,6 +17,11 @@ The format borrows PGN's tag-pair header and ordered movetext structure. JSON pa
 - Readers accept LF and CRLF line endings.
 - Writers emit LF line endings.
 - The conventional extension is `.sts2pgn`.
+- Completed recordings are stored as `.sts2pgn.gz`: a standard gzip wrapper around
+  the exact UTF-8 trace. Decompression yields the same version-one document; neither
+  `FormatVersion`, `projection_version`, nor observation digests change. Readers must
+  decompress before parsing text. The portable `Sts2PgnFile.OpenText` helper detects
+  gzip by its magic bytes and opens both forms.
 - A file contains a tag section, one blank line, a record section, and a terminal result line.
 - Blank lines are not allowed inside the record section in version 1.
 
@@ -30,6 +35,16 @@ The format borrows PGN's tag-pair header and ordered movetext structure. JSON pa
 ```
 
 The action stream is append-only while recording. A clean finalization may atomically change the `Result` header from `*` to its final value; the terminal result line is authoritative if a header and terminal disagree.
+
+The recorder automatically compresses after finalizing a terminal run. It flushes
+the completed gzip file to disk and verifies the decompressed bytes against the
+finalized source using SHA-256 before publishing the `.gz` file and deleting the
+plain source. Compression/publication failure retains the plain trace and is logged;
+existing destinations are not overwritten. Active and incomplete recordings stay
+plain so save/resume and truncated-line recovery work unchanged. A crash between
+publication and deletion can leave both complete copies; temporary compression files
+are not playback inputs. Compression is a file transport concern, not a change to
+the record grammar or comparison semantics.
 
 ## Tag pairs
 
