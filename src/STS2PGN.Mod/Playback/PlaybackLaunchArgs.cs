@@ -1,10 +1,11 @@
 using MegaCrit.Sts2.Core.Helpers;
+using STS2PGN.Serialization;
 
 namespace STS2PGN.Mod.Playback;
 
 /// <summary>
 /// What to drive and how the session was launched. A path may be one script, a directory
-/// (every <c>*.sts2pgn</c> in ordinal filename order), or a <c>.txt</c> list with one path per
+/// (every <c>*.sts2pgn</c> and <c>*.sts2pgn.gz</c> in ordinal filename order), or a <c>.txt</c> list with one path per
 /// line (<c>#</c> starts a comment; relative entries resolve against the list file).
 /// </summary>
 internal sealed record PlaybackLaunchArgs(
@@ -47,12 +48,13 @@ internal sealed record PlaybackLaunchArgs(
         string fullPath = Path.GetFullPath(path.Trim().Trim('"'));
         if (Directory.Exists(fullPath))
         {
-            string[] scripts = Directory.GetFiles(fullPath, "*" + FormatConstants.FileExtension, SearchOption.TopDirectoryOnly)
+            string[] scripts = Directory.GetFiles(fullPath, "*", SearchOption.TopDirectoryOnly)
+                .Where(Sts2PgnFile.IsTracePath)
                 .OrderBy(Path.GetFileName, StringComparer.Ordinal)
                 .ToArray();
             if (scripts.Length == 0)
             {
-                throw new FileNotFoundException($"No {FormatConstants.FileExtension} scripts in '{fullPath}'.");
+                throw new FileNotFoundException($"No .sts2pgn or .sts2pgn.gz scripts in '{fullPath}'.");
             }
 
             return scripts;

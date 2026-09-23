@@ -128,6 +128,11 @@ dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll summarize my-run.sts2pgn
 prefix; `validate --quiet` prints only files with problems; `validate --script` checks a
 decision script against the script profile instead of the recording profile.
 
+All three commands (`validate`, `summarize`, and `to-script`) read plain `.sts2pgn`
+and gzip-compressed `.sts2pgn.gz` files transparently. `to-script` writes a plain
+decision script; its default output for `run.sts2pgn.gz` is `run.script.sts2pgn`.
+Standard gzip tools can compress or decompress files for other consumers.
+
 ## Install the recorder mod
 
 After building, copy these files to the game's `mods/` directory:
@@ -143,6 +148,15 @@ STS2_PGN.config.json
 The game requires the manifest filename to match the mod ID. The source manifest is named `mod_manifest.json`, but the build output renames it to `STS2_PGN.json`.
 
 The mod starts a trace when a supported single-player run launches. By default, traces are stored in the `sts2pgn/` directory under the user's system Documents directory. Metadata and every accepted action are flushed through to disk immediately, so a crash or save-and-quit leaves a parseable incomplete prefix.
+
+Finished runs are automatically compressed to `.sts2pgn.gz`. After finalizing the
+result, the recorder writes and flushes a temporary gzip file, verifies that its
+decompressed SHA-256 matches the finalized trace, publishes it, and removes the plain
+file. A compression failure is logged and leaves the plain recording available;
+an existing compressed destination is never overwritten. Active, saved-and-quit,
+and interrupted runs remain plain `.sts2pgn` files for append and crash recovery.
+Older recordings are not converted automatically. Consumers outside this repository
+must support gzip input or receive a decompressed copy.
 
 The output directory is configured in `STS2_PGN.config.json`, installed beside `STS2_PGN.dll`:
 
@@ -176,7 +190,7 @@ The recorder captures the exact STS2 save snapshot, run/room/act lifecycle, map 
 
 Recorder 0.6.0 also writes full `run.core` observations as the run progresses. These include generated acts and map topology, current room stack and decision offers, player inventories and RNG state, and complete combat state. Observations are emitted only at explicit completion signals: action completion, map generation, room/act events, completed event/reward/rest/shop tasks, combat turn events, and run termination.
 
-Each accepted record is appended and flushed immediately. A clean run end writes the authoritative terminal result, then atomically updates the PGN-style `Result` header. An interrupted run remains a strictly parseable prefix ending in exactly one newline.
+Each accepted record is appended and flushed immediately. A clean run end writes the authoritative terminal result, atomically updates the PGN-style `Result` header, and compresses the finalized recording. An interrupted run retains the existing plain-text prefix recovery behavior.
 
 ## Decision scripts and playback
 
@@ -440,9 +454,11 @@ Parse and validate a trace:
 ```csharp
 using STS2PGN.Model;
 using STS2PGN.Parsing;
+using STS2PGN.Serialization;
 using STS2PGN.Validation;
 
-RunRecord record = Sts2PgnParser.Parse(File.ReadAllText("run.sts2pgn"));
+using StreamReader reader = Sts2PgnFile.OpenText("run.sts2pgn.gz"); // Also accepts plain traces.
+RunRecord record = Sts2PgnParser.Parse(reader);
 Sts2PgnValidationResult validation = Sts2PgnValidator.Validate(record);
 
 if (!validation.IsValid)
@@ -477,8 +493,10 @@ Load a decision script (validates it in script mode and extracts the drivable de
 
 ```csharp
 using STS2PGN.Scripting;
+using STS2PGN.Serialization;
 
-DecisionScript script = DecisionScript.Load(File.OpenText("proposal.sts2pgn"));
+using StreamReader reader = Sts2PgnFile.OpenText("proposal.sts2pgn"); // Or .sts2pgn.gz.
+DecisionScript script = DecisionScript.Load(reader);
 Console.WriteLine($"{script.Identity.Seed}: {script.Decisions.Count} decisions");
 ```
 

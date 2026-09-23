@@ -25,7 +25,7 @@ internal sealed class RecordingSession : IDisposable
     private bool _disposed;
 
     /// <summary>The persisted trace path, or null for a playback-only transient session.</summary>
-    public string? Path { get; }
+    public string? Path { get; private set; }
 
     /// <summary>
     /// The anchor for the first observation: the run.start sequence for a new trace,
@@ -222,7 +222,7 @@ internal sealed class RecordingSession : IDisposable
             _streamResources.Dispose();
             if (Path is not null)
             {
-                Sts2PgnFileFinalizer.FinalizeResultHeader(Path, result);
+                Path = Sts2PgnFileFinalizer.FinalizeRecording(Path, result);
             }
         }
     }

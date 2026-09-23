@@ -27,7 +27,7 @@ internal static class SummarizeCommand
             {
                 Summarize(TraceLoader.Load(path, parseOptions));
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Sts2PgnParseException)
+            catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or Sts2PgnParseException)
             {
                 Console.Error.WriteLine($"{path}: {exception.Message}");
                 anyError = true;

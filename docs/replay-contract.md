@@ -50,10 +50,13 @@ and replay-time comparison is intentionally unavailable. Reports are still writt
 Launch:
 
 - `--sts2pgn-script=<file|directory|list.txt>` on the game command line. A directory
-  runs every `*.sts2pgn` in ordinal filename order; a `.txt` list runs one path per line
+  runs every `*.sts2pgn` and `*.sts2pgn.gz` in ordinal filename order; a `.txt` list runs one path per line
   (`#` comments). The batch starts once the main menu is ready, runs scripts back to back
   (returning to the main menu between them), writes reports, and quits the game with the
   batch exit code.
+- File and list inputs also accept gzip-compressed traces/scripts. Completed output
+  recordings are automatically compressed, and the report's `recording_path` points
+  to the `.sts2pgn.gz` file. Incomplete and active handoff recordings remain plain.
 - The dev-console command `sts2pgn drive <path>` does the same interactively and never
   quits.
 - `sts2pgn handoff <file>` accepts exactly one partial script. After its final decision

@@ -10,6 +10,7 @@ using STS2PGN.Mod.Recording;
 using STS2PGN.Model;
 using STS2PGN.Parsing;
 using STS2PGN.Scripting;
+using STS2PGN.Serialization;
 using STS2PGN.Validation;
 
 namespace STS2PGN.Mod.Playback;
@@ -43,7 +44,7 @@ internal static class ScriptPreflight
         try
         {
             RunRecord record;
-            using (StreamReader reader = new(scriptPath))
+            using (StreamReader reader = Sts2PgnFile.OpenText(scriptPath))
             {
                 record = Sts2PgnParser.Parse(reader, new Sts2PgnParseOptions { RecoverTruncatedFinalLine = false });
             }
@@ -58,7 +59,7 @@ internal static class ScriptPreflight
 
             script = DecisionScript.FromRecord(record);
         }
-        catch (Exception exception) when (exception is IOException or Sts2PgnParseException or Sts2PgnValidationException or ArgumentException)
+        catch (Exception exception) when (exception is IOException or InvalidDataException or Sts2PgnParseException or Sts2PgnValidationException or ArgumentException)
         {
             PreflightResult failed = new();
             failed.Failures.Add($"{PlaybackReasons.Validation}: {exception.Message}");

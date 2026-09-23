@@ -43,6 +43,7 @@ public static class Program
     private static void PrintUsage(TextWriter writer)
     {
         writer.WriteLine("Usage: sts2pgn <command> [options] <file>...");
+        writer.WriteLine("Reads plain .sts2pgn and compressed .sts2pgn.gz files.");
         writer.WriteLine();
         writer.WriteLine("Commands:");
         writer.WriteLine("  validate <file>...   Parse and validate traces; non-zero exit on any error.");
