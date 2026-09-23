@@ -288,7 +288,7 @@ internal sealed class RecordingSession : IDisposable
             RunMetadata tags = Sts2PgnParser.ParseMetadata(reader);
             ReleaseInfo? release = ReleaseInfoManager.Instance.ReleaseInfo;
             return tags.GetValue("Format") == FormatConstants.Name
-                && tags.GetValue("FormatVersion") == FormatConstants.CurrentVersion.ToString(CultureInfo.InvariantCulture)
+                && tags.GetValue("FormatVersion") is "1" or "2"
                 && tags.GetValue("Result") == "*"
                 && tags.GetValue("GameStartTime") == save.StartTime.ToString(CultureInfo.InvariantCulture)
                 && tags.GetValue("Seed") == state.Rng.StringSeed

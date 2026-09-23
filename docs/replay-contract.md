@@ -4,6 +4,16 @@
 
 A `.sts2pgn` trace is an executable conformance fixture. The real game is the oracle. A simulator consumes the same initial state and player decisions, then compares its settled state to observations emitted by STS2.
 
+FormatVersion 2 adds lossless `state.delta` records on disk. Decode them against the
+previous recorded observation and verify the reconstructed full-state digest before
+timeline processing. The simulator must receive the same complete observations,
+sequence numbers, `after` references, and contexts as a full trace; comparing only
+patched fields would miss divergences. Reset the decoding baseline at `run.resume`
+and require a full checkpoint of the restored state. The Core parser performs this
+step for its replay engine and playback consumers. Other consumers must implement
+version-two support explicitly; no simulator changes outside this repository are
+included with this codec.
+
 The primary output is not merely pass/fail. It is the earliest reproducible divergence with enough context to diagnose which simulated rule differs from the game.
 
 ## Responsibilities

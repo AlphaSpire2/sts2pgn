@@ -5,7 +5,9 @@ STS2PGN records Slay the Spire 2 runs as deterministic, human-readable traces in
 The long-term purpose is simulator conformance testing: record a run in the real game, feed the resulting `.sts2pgn` file to an external simulator, replay the same decisions, and identify the first state difference between the simulator and STS2.
 
 > [!IMPORTANT]
-> Recorder 0.8.0 adds a *decision-script* profile of the format and an in-game *playback driver*: a simulator proposes a run as a script, the mod executes it in the real game while recording normally, and the recording is replayed back through the simulator. The game-coupled assembly still needs to be built and smoke-tested with matching STS2 assemblies.
+> Recorder **0.10.0** adds FormatVersion 2 lossless state deltas and automatic gzip compression of completed recordings. Consumers need version-two support before reading new recordings. In-game smoke testing with matching STS2 assemblies remains required.
+>
+> Recorder 0.8.0 introduced the *decision-script* profile and in-game *playback driver*: a simulator proposes a run as a script, the mod executes it in the real game while recording normally, and the recording is replayed back through the simulator.
 
 ## Architecture
 
@@ -21,6 +23,14 @@ simulator -> decision script -> playback driver in the real game (recording) -> 
 
 The trace contains initial state, ordered semantic actions, compatibility metadata, and authoritative state observations. Cosmetic input and presentation timing are deliberately excluded.
 
+Recorder **0.10.0** writes new recordings using **FormatVersion 2** with lossless state deltas and periodic full
+checkpoints. Every observation reconstructs to its complete original state and digest
+before validation or replay. Full checkpoints at start/resume boundaries prevent
+state from leaking across a loaded save. Version-one recordings and scripts remain
+readable; a resumed version-one recording retains its original encoding. External
+consumers, including `sts2sim`, need version-two reader support before consuming new
+recordings. Gzip decompression alone does not expand the deltas.
+
 ## Repository layout
 
 ```text
@@ -28,7 +38,7 @@ src/STS2PGN.Core/          Portable trace model and codec
 src/STS2PGN.Mod/           STS2 recorder mod and script playback driver
 src/STS2PGN.Tool/          sts2pgn CLI: validate (recordings and scripts) and summarize traces
 tests/STS2PGN.Core.Tests/  Game-independent tests
-docs/format.md             Version-one format and projection specification
+docs/format.md             Version-one/two format and projection specification
 docs/replay-contract.md    Recorder/simulator comparison contract
 docs/action-coverage.md    Game integration audit ledger
 examples/                  Example traces
@@ -188,7 +198,15 @@ The configuration is read when the mod initializes, so restart the game after ch
 
 The recorder captures the exact STS2 save snapshot, run/room/act lifecycle, map movement, combat actions, synchronized player choices, event and rest choices, rewards, treasure, shop operations, progression controls, and Crystal Sphere interactions. Asynchronous actions are written before any nested choice and followed by a correlated resolve record. Cards, rewards, model IDs, enums, actors, and offered index choices use portable semantic fingerprints. Crystal Sphere records its complete deterministically generated 11×11 board and post-generation RNG position as observational state, followed by tool changes and logical cell coordinates.
 
-Recorder 0.6.0 also writes full `run.core` observations as the run progresses. These include generated acts and map topology, current room stack and decision offers, player inventories and RNG state, and complete combat state. Observations are emitted only at explicit completion signals: action completion, map generation, room/act events, completed event/reward/rest/shop tasks, combat turn events, and run termination.
+Since recorder 0.6.0, the recorder captures complete `run.core` observations as the run progresses. These include generated acts and map topology, current room stack and decision offers, player inventories and RNG state, and complete combat state. Observations are emitted only at explicit completion signals: action completion, map generation, room/act events, completed event/reward/rest/shop tasks, combat turn events, and run termination.
+
+Version-two recordings store these observations as full checkpoints or `state.delta`
+records, whichever the checkpoint policy and encoded size require. The first
+observation, start/resume and room/act entry boundaries, and the observation after
+64 consecutive deltas are full checkpoints. Unknown state fields, exact numbers,
+array order, and every comparison boundary are retained. Deltas are also used while
+the recording is active; the existing line-based append and recovery rules still
+apply. Final gzip compression then reduces the completed file further.
 
 Each accepted record is appended and flushed immediately. A clean run end writes the authoritative terminal result, atomically updates the PGN-style `Result` header, and compresses the finalized recording. An interrupted run retains the existing plain-text prefix recovery behavior.
 
@@ -205,7 +223,7 @@ of [docs/format.md](docs/format.md) and `examples/script-minimal.sts2pgn`.
 dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll validate --script my-script.sts2pgn
 
 # Replay a recorded run through the driver: convert the recording into a script first
-dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll to-script my-run.sts2pgn --producer sts2pgn-tool/0.8.0
+dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll to-script my-run.sts2pgn --producer sts2pgn-tool/0.10.0
 ```
 
 The driver performs the same conversion automatically when it is given a recording
@@ -487,6 +505,12 @@ string text = Sts2PgnWriter.Write(record);
 
 `Sts2PgnParser` preserves unknown tags, action kinds, and payload properties. By default it recovers a valid prefix when only the unterminated final JSON record was truncated. Set `RecoverTruncatedFinalLine` to `false` for strict archival validation.
 
+For version two, parsing expands `state.delta` into complete `state.observe` entries
+and verifies full-state digests. A complete but invalid delta is never recovered or
+skipped. Callers of the validator and replay engine should use this decoded model;
+raw wire deltas are rejected. Set `Sts2PgnWriterOptions.EncodeStateDeltas = false`
+to write an expanded trace using the Core API (this retains its declared version).
+
 `CanonicalJson.ComputeSha256` sorts object properties and normalizes JSON numbers before hashing portable state observations.
 
 Load a decision script (validates it in script mode and extracts the drivable decisions):
@@ -524,7 +548,7 @@ adapter lifecycle and divergence format.
 
 ## Format status
 
-The version-one text grammar, core codec, and state projection are implemented. Projection version 1 defines `run_start.core` and the live `run.core` schema. Incompatible grammar changes require a new `FormatVersion`; incompatible state-schema or comparison changes require a new `projection_version`.
+The version-one text grammar, version-two lossless observation encoding, and state projection are implemented. Projection version 1 defines `run_start.core` and the live `run.core` schema and is unchanged by delta encoding. Incompatible grammar changes require a new `FormatVersion`; incompatible state-schema or comparison changes require a new `projection_version`.
 
 The authoritative design documents are:
 

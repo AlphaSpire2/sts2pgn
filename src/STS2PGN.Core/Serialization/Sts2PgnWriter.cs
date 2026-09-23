@@ -35,9 +35,12 @@ public static class Sts2PgnWriter
         }
 
         WriteMetadata(writer, record.Metadata);
+        StateDeltaCodec? deltaCodec = options.EncodeStateDeltas && record.Metadata.GetValue("FormatVersion") == "2"
+            ? new StateDeltaCodec()
+            : null;
         foreach (RunRecordEntry entry in record.Entries)
         {
-            WriteEntry(writer, entry);
+            WriteEntry(writer, deltaCodec?.Encode(entry) ?? entry);
         }
 
         if (options.IncludeTerminalResult)

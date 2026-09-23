@@ -26,5 +26,6 @@
 
   <ItemGroup>
     <None Include="../../examples/minimal.sts2pgn" Link="examples/minimal.sts2pgn" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../examples/delta-minimal.sts2pgn" Link="examples/delta-minimal.sts2pgn" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
