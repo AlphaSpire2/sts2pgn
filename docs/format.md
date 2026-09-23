@@ -1,6 +1,12 @@
-# STS2PGN Format Version 1
+# STS2PGN Format Versions 1 and 2
 
-Status: **text grammar and Phase 4 state projection version 1 implemented**.
+Status: **recorder 0.10.0 implements version-two lossless observation deltas and state projection version 1**.
+
+New recordings use `FormatVersion "2"`. Readers also support version 1, which
+always carries full observations. Version 2 changes only how observations are
+stored: all decisions, observation boundaries, reconstructed states, and comparison
+semantics remain the same. Consumers must explicitly support version 2 before
+reading it; treating an unknown `state.delta` as an action would be incorrect.
 
 ## Purpose
 
@@ -18,7 +24,7 @@ The format borrows PGN's tag-pair header and ordered movetext structure. JSON pa
 - Writers emit LF line endings.
 - The conventional extension is `.sts2pgn`.
 - Completed recordings are stored as `.sts2pgn.gz`: a standard gzip wrapper around
-  the exact UTF-8 trace. Decompression yields the same version-one document; neither
+  the exact UTF-8 trace. Decompression yields the same version-one or version-two document; neither
   `FormatVersion`, `projection_version`, nor observation digests change. Readers must
   decompress before parsing text. The portable `Sts2PgnFile.OpenText` helper detects
   gzip by its magic bytes and opens both forms.
@@ -61,7 +67,7 @@ Keys match `[A-Za-z][A-Za-z0-9_]*`. Within values, `\"`, `\\`, `\n`, `\r`, and `
 | Tag | Meaning |
 |---|---|
 | `Format` | Always `STS2PGN`. |
-| `FormatVersion` | Major format version; `1` for this document. |
+| `FormatVersion` | Major format version: `1` for full observations, `2` for full observations plus lossless deltas. |
 | `RecorderVersion` | Version of the producing mod. |
 | `RunId` | Unique opaque identifier assigned by the recorder. |
 | `GameVersion` | Human-readable STS2 release version. |
@@ -99,6 +105,10 @@ sequence SP kind SP payload
 - `kind` is a lowercase dotted identifier matching `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+`.
 - `payload` is one compact JSON object. It must not be `null`, an array, or a scalar.
 - Unknown record kinds and unknown payload properties must survive a read/write cycle.
+
+The version-two `state.delta` transport envelope is closed, as specified below.
+Unknown properties inside its `observation` envelope and reconstructed `state` are
+preserved just like properties of a full observation.
 
 The final non-empty line contains one result token and has no sequence number. A prefix that ends after a complete record but has no terminal token is treated as incomplete with result `*`.
 
@@ -360,9 +370,71 @@ A `state.observe` record describes authoritative state after the real game has s
 - `projection_version` versions the state schema independently of the file grammar.
 - `state` is the complete projection for its declared scope.
 
-Recorder 0.6.0 and later generate full observations after settled actions and at run start, run resume, map generation, room/act boundaries, combat turn boundaries, choice/reward/rest/shop boundaries, and run end.
+Recorder 0.6.0 and later capture complete observations after settled actions and at run start, run resume, map generation, room/act boundaries, combat turn boundaries, choice/reward/rest/shop boundaries, and run end. Version-two writers may store these as lossless deltas; readers reconstruct the full observations before validation or replay.
 
 The core library validates the observation envelope (`after`, `context`, `digest`, `projection_version`, and object-valued `state`) and verifies that the digest matches the canonical state. For `context = run.start`, it also requires the observation to reference `run.start`, match `run.start.data.state`, and conform to the `run_start.core` schema. For `context = run.resume`, it requires the observation to immediately follow and reference a `run.resume` record, match `run.resume.data.state`, and use scope `run.core`.
+
+### Version 2: lossless observation deltas
+
+A full `state.observe` is still a complete checkpoint. Between checkpoints a writer
+may replace an observation with one `state.delta` at the **same sequence number**:
+
+```text
+18 state.delta {"base":16,"observation":{"after":17,"context":"action.settled","digest":"sha256:...","projection_version":1},"patch":[["set",["run","floor"],4],["remove",["run","old_field"]]]}
+```
+
+The payload has exactly three properties:
+
+- `base`: the sequence of the immediately preceding recorded observation, whether
+  full or delta. Actions between the observations do not change this reference.
+- `observation`: the original observation payload with only `state` removed. It
+  retains `after`, `context`, `digest`, `projection_version`, and all unknown
+  observation properties. It must not contain a `state` property.
+- `patch`: an ordered array of operations against the previous **recorded** state.
+  `[]` means an identical state at a new comparison boundary; it does not remove
+  the observation or its context.
+
+Each operation is either `["set", path, value]` or `["remove", path]`. A path is a
+non-empty array of literal object-property names, not a JSON Pointer: `""`, `"/"`,
+and `"~"` need no special escaping beyond normal JSON string encoding. Every
+intermediate path component must already identify an object. `set` adds or replaces
+the last property; `remove` requires that property to exist. Setting a property to
+`null` is distinct from removing it. Arrays are replaced whole, retaining their
+order and exact values; patches cannot address array elements. Root replacement,
+other operation names, extra operation arguments, and unknown transport-envelope
+properties are invalid.
+
+A decoder clones the prior recorded state, applies all operations in order, inserts
+the result as `observation.state`, and verifies the original canonical SHA-256 digest
+over that **complete** state. It then exposes a normal `state.observe` record with
+the original sequence. No values may come from the simulator. Replay compares the
+entire reconstructed state, including fields absent from the patch. Deltas must not
+round numbers, omit defaults, or change the state projection or digest algorithm.
+Missing/mismatched bases, invalid paths, and digest failures are hard errors even
+when the invalid record is the unterminated final line.
+
+Writers emit full checkpoints for the first observation, after `run.start`,
+`run.resume`, `room.enter`, or `act.enter`, and for observations whose context names
+one of those boundaries. Decoders clear the old baseline at each such lifecycle
+record and require the next observation to be full. In particular, a resume's
+checkpoint reflects the restored state: nothing may be inherited from the abandoned
+timeline. Prior records remain in the trace. `run.start.data.state`,
+`run.resume.data.state`, and source snapshots remain complete.
+
+The bundled writer permits at most 64 consecutive deltas before another full
+checkpoint, and uses a full observation whenever its encoding is no larger than
+the delta. This interval is a writer policy; decoders may accept longer valid
+chains from other producers. Every observation boundary is retained. A reopened
+writer starts a fresh chain and writes its next observation in full. Continuing a
+version-one recording retains its original version and full-observation encoding.
+
+`Sts2PgnParser` expands and verifies version-two observations before returning a
+`RunRecord`. The validator, replay engine, script converter, and playback driver
+operate on this decoded model. `Sts2PgnWriter` and `Sts2PgnStreamWriter` encode
+deltas automatically for version-two metadata; version-one output stays full.
+`Sts2PgnWriterOptions.EncodeStateDeltas = false` writes full observations while
+retaining the file's declared version. See `examples/delta-minimal.sts2pgn` for a
+complete version-two example with an independently specified patch and digest.
 
 ### Projection version 1: `run_start.core`
 
@@ -480,6 +552,8 @@ A malformed complete line in the middle of a file is an error and must not be sk
 ## Compatibility
 
 - A reader must reject unsupported major `FormatVersion` values.
+- This implementation accepts versions 1 and 2. Version-one-only consumers need a
+  decoder update for version-two recordings; gzip decompression alone is not enough.
 - Unknown tags, record kinds, and payload fields are preserved for forward compatibility.
 - Exact game replay requires compatible game version, model hash, and gameplay-affecting mods.
 - Simulator replay may proceed across builds only when the consumer deliberately supports their semantics; compatibility mismatches remain visible in the report.

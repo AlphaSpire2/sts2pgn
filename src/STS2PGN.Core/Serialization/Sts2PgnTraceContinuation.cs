@@ -97,7 +97,10 @@ public sealed class Sts2PgnTraceContinuation : IDisposable
             }
 
             long nextSequence = prefix.Entries[^1].Sequence + 1;
-            Sts2PgnStreamWriter writer = Sts2PgnStreamWriter.Continue(text, nextSequence, leaveOpen: true);
+            // A continuation starts with a fresh codec baseline. The first new observation
+            // is full; it must never depend on state from the abandoned pre-resume timeline.
+            int formatVersion = prefix.Metadata.GetValue("FormatVersion") == "2" ? 2 : 1;
+            Sts2PgnStreamWriter writer = Sts2PgnStreamWriter.Continue(text, nextSequence, leaveOpen: true, formatVersion);
             return new Sts2PgnTraceContinuation(path, prefix, removedTail, file, text, writer);
         }
         catch

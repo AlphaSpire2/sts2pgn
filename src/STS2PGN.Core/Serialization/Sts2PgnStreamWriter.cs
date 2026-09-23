@@ -11,9 +11,11 @@ public sealed class Sts2PgnStreamWriter : IDisposable
 {
     private readonly TextWriter _writer;
     private readonly bool _leaveOpen;
+    private readonly StateDeltaCodec? _deltaCodec;
     private long _nextSequence = 1;
     private bool _completed;
     private bool _disposed;
+    private bool _faulted;
 
     public long NextSequence => _nextSequence;
     public bool IsCompleted => _completed;
@@ -25,15 +27,17 @@ public sealed class Sts2PgnStreamWriter : IDisposable
 
         _writer = writer;
         _leaveOpen = leaveOpen;
+        _deltaCodec = metadata.GetValue("FormatVersion") == "2" ? new StateDeltaCodec() : null;
         Sts2PgnWriter.WriteMetadata(_writer, metadata);
         FlushDurably();
     }
 
-    private Sts2PgnStreamWriter(TextWriter writer, long nextSequence, bool leaveOpen)
+    private Sts2PgnStreamWriter(TextWriter writer, long nextSequence, bool leaveOpen, int formatVersion)
     {
         _writer = writer;
         _leaveOpen = leaveOpen;
         _nextSequence = nextSequence;
+        _deltaCodec = formatVersion == FormatConstants.DeltaEncodingVersion ? new StateDeltaCodec() : null;
     }
 
     /// <summary>
@@ -41,19 +45,41 @@ public sealed class Sts2PgnStreamWriter : IDisposable
     /// positioned immediately after the final complete, newline-terminated record;
     /// no tag section is written.
     /// </summary>
-    public static Sts2PgnStreamWriter Continue(TextWriter writer, long nextSequence, bool leaveOpen = false)
+    public static Sts2PgnStreamWriter Continue(TextWriter writer, long nextSequence, bool leaveOpen = false) =>
+        Continue(writer, nextSequence, leaveOpen, formatVersion: 1);
+
+    /// <summary>
+    /// Continues using the existing file's version. No baseline is carried across reopen;
+    /// the first new observation is full, including for version-two files.
+    /// </summary>
+    public static Sts2PgnStreamWriter Continue(TextWriter writer, long nextSequence, bool leaveOpen, int formatVersion)
     {
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentOutOfRangeException.ThrowIfLessThan(nextSequence, 1);
-        return new Sts2PgnStreamWriter(writer, nextSequence, leaveOpen);
+        if (!FormatConstants.IsSupportedVersion(formatVersion))
+        {
+            throw new ArgumentOutOfRangeException(nameof(formatVersion));
+        }
+        return new Sts2PgnStreamWriter(writer, nextSequence, leaveOpen, formatVersion);
     }
 
     public RunRecordEntry Append(string kind, JsonElement payload)
     {
         ThrowIfUnavailable();
         RunRecordEntry entry = new(_nextSequence, kind, payload);
-        Sts2PgnWriter.WriteEntry(_writer, entry);
-        FlushDurably();
+        RunRecordEntry encoded = _deltaCodec?.Encode(entry) ?? entry;
+        try
+        {
+            Sts2PgnWriter.WriteEntry(_writer, encoded);
+            FlushDurably();
+        }
+        catch
+        {
+            // A failed write may have advanced the codec or left a partial line. Reopen
+            // through trace continuation to recover the durable prefix before appending.
+            _faulted = true;
+            throw;
+        }
         _nextSequence++;
         return entry;
     }
@@ -97,6 +123,10 @@ public sealed class Sts2PgnStreamWriter : IDisposable
     private void ThrowIfUnavailable()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_faulted)
+        {
+            throw new InvalidOperationException("The trace writer failed; reopen the durable prefix before appending.");
+        }
         if (_completed)
         {
             throw new InvalidOperationException("The trace already has a terminal result.");

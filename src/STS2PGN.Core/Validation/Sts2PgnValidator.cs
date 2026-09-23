@@ -71,7 +71,7 @@ public static class Sts2PgnValidator
     public static Sts2PgnValidationResult Validate(RunRecord record) =>
         Validate(record, Sts2PgnValidationMode.Recording);
 
-    /// <summary>Validates a trace against the recording or decision-script profile of Format version 1.</summary>
+    /// <summary>Validates a decoded trace against the recording or decision-script profile.</summary>
     public static Sts2PgnValidationResult Validate(RunRecord record, Sts2PgnValidationMode mode)
     {
         ArgumentNullException.ThrowIfNull(record);
@@ -142,12 +142,12 @@ public static class Sts2PgnValidator
 
         if (record.Metadata.GetValue("FormatVersion") is { } versionText
             && (!int.TryParse(versionText, NumberStyles.None, CultureInfo.InvariantCulture, out int version)
-                || version != FormatConstants.CurrentVersion))
+                || !FormatConstants.IsSupportedVersion(version)))
         {
             AddError(
                 issues,
                 "unsupported_format_version",
-                $"FormatVersion must be '{FormatConstants.CurrentVersion}'.",
+                "FormatVersion must be '1' or '2'.",
                 "tag:FormatVersion");
         }
 
@@ -352,6 +352,11 @@ public static class Sts2PgnValidator
             }
 
             ValidateActionContract(entry, issues);
+
+            if (entry.Kind == "state.delta")
+            {
+                AddError(issues, "undecoded_state_delta", "Wire deltas must be decoded by Sts2PgnParser before validation or replay.", $"sequence:{entry.Sequence}");
+            }
 
             if (entry.Kind == "state.observe")
             {

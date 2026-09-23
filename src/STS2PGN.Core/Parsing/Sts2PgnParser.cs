@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using STS2PGN.Model;
+using STS2PGN.Serialization;
 using STS2PGN.Validation;
 
 namespace STS2PGN.Parsing;
@@ -34,6 +35,7 @@ public static class Sts2PgnParser
         bool sawTerminalResult = false;
         bool recovered = false;
         int lineNumber = 0;
+        StateDeltaCodec? deltaCodec = null;
 
         while (TryReadPhysicalLine(reader, out string line, out bool wasTerminated))
         {
@@ -54,6 +56,19 @@ public static class Sts2PgnParser
                     }
 
                     inRecordSection = true;
+                    string? versionText = new RunMetadata(tags).GetValue("FormatVersion");
+                    if (versionText is not null)
+                    {
+                        if (!int.TryParse(versionText, NumberStyles.None, CultureInfo.InvariantCulture, out int version)
+                            || !FormatConstants.IsSupportedVersion(version))
+                        {
+                            throw Error($"Unsupported FormatVersion '{versionText}'.", lineNumber);
+                        }
+                        if (version == FormatConstants.DeltaEncodingVersion)
+                        {
+                            deltaCodec = new StateDeltaCodec(options.MaxJsonDepth);
+                        }
+                    }
                     continue;
                 }
 
@@ -93,7 +108,20 @@ public static class Sts2PgnParser
                 break;
             }
 
-            entries.Add(entry!);
+            try
+            {
+                if (deltaCodec is null && entry!.Kind == "state.delta")
+                {
+                    throw new InvalidDataException("state.delta requires FormatVersion 2.");
+                }
+                entries.Add(deltaCodec?.Decode(entry!) ?? entry!);
+            }
+            catch (Exception exception) when (exception is InvalidDataException or ArgumentException or JsonException or InvalidOperationException)
+            {
+                // Recovery only applies to truncated JSON syntax, never to a complete but
+                // invalid delta, missing base, or failed full-state digest verification.
+                throw new Sts2PgnParseException(exception.Message, lineNumber, exception);
+            }
         }
 
         if (lineNumber == 0)

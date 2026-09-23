@@ -6,7 +6,10 @@ namespace STS2PGN;
 public static class FormatConstants
 {
     public const string Name = "STS2PGN";
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
+    public const int DeltaEncodingVersion = 2;
     public const int CurrentStateProjectionVersion = 1;
     public const string FileExtension = ".sts2pgn";
+
+    public static bool IsSupportedVersion(int version) => version is 1 or 2;
 }

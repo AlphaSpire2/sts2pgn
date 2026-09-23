@@ -1,0 +1,19 @@
+[Format "STS2PGN"]
+[FormatVersion "2"]
+[RecorderVersion "0.10.0"]
+[RunId "00000000-0000-0000-0000-000000000000"]
+[GameVersion "EXAMPLE"]
+[GameCommit "UNKNOWN"]
+[ModelIdHash "0"]
+[Seed "EXAMPLESEED"]
+[Mode "STANDARD"]
+[Ascension "0"]
+[Players "[{\"slot\":\"p0\",\"character\":\"IRONCLAD\"}]"]
+[StartedAt "2026-01-01T00:00:00Z"]
+[Result "*"]
+
+1 run.start {"actor":null,"location":{"act":0,"floor":0},"data":{"source_snapshot":{"schema_version":0,"encoding":"sts2-save-json","data":{}},"state":{"scope":"run_start.core","run":{"seed":"EXAMPLESEED","mode":"standard","ascension":0,"act":0,"floor":0},"acts":[{"index":0,"model_id":"ACT.OVERGROWTH"}],"players":[{"slot":"p0","character_model":"CHARACTER.IRONCLAD"}],"rooms":[],"choices":{"player_choices":[],"rewards":[]},"special_event":null,"combat":null}},"extensions":{}}
+2 state.observe {"after":1,"context":"run.start","digest":"sha256:504542b3d1b67b93fa2bcc38ac23bff4b8e0d82bc83e27abb08b68b1e0eb57b7","projection_version":1,"state":{"scope":"run_start.core","run":{"seed":"EXAMPLESEED","mode":"standard","ascension":0,"act":0,"floor":0},"acts":[{"index":0,"model_id":"ACT.OVERGROWTH"}],"players":[{"slot":"p0","character_model":"CHARACTER.IRONCLAD"}],"rooms":[],"choices":{"player_choices":[],"rewards":[]},"special_event":null,"combat":null}}
+3 map.choose {"actor":"p0","data":{"col":1,"row":0}}
+4 state.delta {"base":2,"observation":{"after":3,"context":"action.settled","digest":"sha256:3b7fd0af59b676a61edcbe2dab00de698539c1a5d0d2d36af8ca634b1d9bddfa","projection_version":1},"patch":[["set",["run","floor"],1],["set",["scope"],"run.core"]]}
+*
