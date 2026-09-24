@@ -23,6 +23,7 @@ public static class Program
                 "validate" => ValidateCommand.Run(rest),
                 "summarize" => SummarizeCommand.Run(rest),
                 "to-script" => ToScriptCommand.Run(rest),
+                "index" => IndexCommand.Run(rest),
                 _ => UnknownCommand(command),
             };
         }
@@ -48,13 +49,14 @@ public static class Program
         writer.WriteLine("Commands:");
         writer.WriteLine("  validate <file>...   Parse and validate traces; non-zero exit on any error.");
         writer.WriteLine("  summarize <file>...  Print headers, record statistics, and run shape.");
+        writer.WriteLine("  index [--overwrite] <file>...  Write searchable .meta.json sidecars for closed traces.");
         writer.WriteLine("  to-script <file> --producer name/version [--out path]");
         writer.WriteLine("                       Convert a recording into a decision script for the playback driver.");
         writer.WriteLine();
         writer.WriteLine("Options:");
         writer.WriteLine("  --no-recover   Treat a truncated unterminated final line as a parse error.");
         writer.WriteLine("  --quiet        validate: print only files with problems.");
-        writer.WriteLine("  --script       validate: check the decision-script profile (Producer header) instead of a recording.");
+        writer.WriteLine("  --script       validate: require a decision script; otherwise detect Profile or legacy producer tags.");
     }
 }
 

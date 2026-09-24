@@ -12,7 +12,7 @@ internal sealed record ToolArguments(
     IReadOnlyList<string> Paths,
     Sts2PgnParseOptions ParseOptions,
     bool Quiet,
-    Sts2PgnValidationMode ValidationMode);
+    Sts2PgnValidationMode? ValidationMode);
 
 internal static class TraceLoader
 {
@@ -24,7 +24,7 @@ internal static class TraceLoader
         List<string> paths = [];
         bool recover = true;
         bool quiet = false;
-        Sts2PgnValidationMode mode = Sts2PgnValidationMode.Recording;
+        Sts2PgnValidationMode? mode = null;
         foreach (string arg in args)
         {
             switch (arg)

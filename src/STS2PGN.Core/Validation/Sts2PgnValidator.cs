@@ -208,6 +208,20 @@ public static class Sts2PgnValidator
 
     private static void ValidateProfileTags(RunRecord record, List<ValidationIssue> issues, Sts2PgnValidationMode mode)
     {
+        try
+        {
+            string profile = ScriptProfile.GetProfile(record.Metadata);
+            string expected = mode == Sts2PgnValidationMode.Script ? ScriptProfile.Script : ScriptProfile.Recording;
+            if (record.Metadata.GetValue(ScriptProfile.ProfileTag) is not null && profile != expected)
+            {
+                AddError(issues, "profile_mode_mismatch", $"Profile '{profile}' cannot be validated as '{expected}'.", "tag:Profile");
+            }
+        }
+        catch (InvalidDataException exception)
+        {
+            AddError(issues, "invalid_profile", exception.Message, "tag:Profile");
+        }
+
         string? producer = record.Metadata.GetValue(ScriptProfile.ProducerTag);
         string? recorderVersion = record.Metadata.GetValue(ScriptProfile.RecorderVersionTag);
         if (mode == Sts2PgnValidationMode.Recording)

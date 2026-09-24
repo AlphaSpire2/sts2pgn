@@ -3,7 +3,7 @@ using STS2PGN.Model;
 namespace STS2PGN.Scripting;
 
 /// <summary>
-/// Constants for the decision-script profile of Format version 1.
+/// Profile identity and constants for decision scripts in Format versions 1 and 2.
 /// A script is a proposal produced by a simulator; it carries a <c>Producer</c> tag and never a
 /// <c>RecorderVersion</c> tag. It uses the same grammar and record kinds as a recording but omits
 /// observations, digests, resolutions, and the final <c>run.finish</c>.
@@ -13,6 +13,9 @@ public static class ScriptProfile
     public const string ProducerTag = "Producer";
     public const string RecorderVersionTag = "RecorderVersion";
     public const string RequiredMode = "CUSTOM";
+    public const string ProfileTag = "Profile";
+    public const string Script = "script";
+    public const string Recording = "recording";
 
     /// <summary>Tags every script must carry, in canonical order.</summary>
     public static readonly IReadOnlyList<string> RequiredTags =
@@ -97,8 +100,26 @@ public static class ScriptProfile
 
     public static bool IsScript(RunMetadata metadata)
     {
+        return GetProfile(metadata) == Script;
+    }
+
+    /// <summary>Resolves explicit or legacy profile identity, rejecting conflicting declarations.</summary>
+    public static string GetProfile(RunMetadata metadata)
+    {
         ArgumentNullException.ThrowIfNull(metadata);
-        return metadata.GetValue(ProducerTag) is not null;
+        string? profile = metadata.GetValue(ProfileTag);
+        bool producer = metadata.GetValue(ProducerTag) is not null;
+        bool recorder = metadata.GetValue(RecorderVersionTag) is not null;
+        if (metadata.GetValues(ProfileTag).Count > 1
+            || (profile is not null && profile is not (Script or Recording)))
+        {
+            throw new InvalidDataException("Profile must occur at most once and be 'script' or 'recording'.");
+        }
+        if ((producer && recorder) || (profile == Script && recorder) || (profile == Recording && producer))
+        {
+            throw new InvalidDataException("Profile conflicts with Producer or RecorderVersion.");
+        }
+        return profile ?? (producer ? Script : Recording);
     }
 
     /// <summary>

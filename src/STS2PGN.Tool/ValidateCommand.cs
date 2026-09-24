@@ -19,12 +19,15 @@ internal static class ValidateCommand
         return anyError ? 1 : 0;
     }
 
-    private static bool ValidateFile(string path, Sts2PgnParseOptions parseOptions, bool quiet, Sts2PgnValidationMode mode)
+    private static bool ValidateFile(string path, Sts2PgnParseOptions parseOptions, bool quiet, Sts2PgnValidationMode? requestedMode)
     {
         LoadedTrace trace;
+        Sts2PgnValidationMode mode;
         try
         {
             trace = TraceLoader.Load(path, parseOptions);
+            mode = requestedMode ?? (ScriptProfile.IsScript(trace.Record.Metadata)
+                ? Sts2PgnValidationMode.Script : Sts2PgnValidationMode.Recording);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or Sts2PgnParseException)
         {

@@ -52,6 +52,44 @@ publication and deletion can leave both complete copies; temporary compression f
 are not playback inputs. Compression is a file transport concern, not a change to
 the record grammar or comparison semantics.
 
+## Search metadata sidecars
+
+After publishing a completed recording, the recorder writes
+`<filename>.meta.json`, for example `run.sts2pgn.gz.meta.json`. This is an optional,
+rebuildable search index, not part of the trace or a prerequisite for playback.
+Indexing failure is logged without invalidating the completed archive.
+
+Schema version 1 is a UTF-8 JSON object with these fields:
+
+| Field | JSON type and meaning |
+|---|---|
+| `schema_version` | Integer, currently `1`; independent of the trace format version. |
+| `file` | String, adjacent trace's basename; no absolute machine path. |
+| `file_size_bytes` | Integer, size of the indexed file. |
+| `file_sha256` | `sha256:` plus lowercase hexadecimal hash of the exact indexed file bytes; for gzip, this hashes the compressed archive. |
+| `profile` | String, resolved `recording` or `script`, including legacy inference. |
+| `format_version` | Integer, trace `FormatVersion`. |
+| `seed` | String, exact `Seed` value, preserving leading zeros. |
+| `run_id`, `mode` | Corresponding header strings, or null if absent. |
+| `ascension` | Integer from the `Ascension` header. |
+| `players` | Parsed `Players` array, including character identities. |
+| `game_version`, `game_commit`, `model_id_hash` | Corresponding header strings, or null if absent. |
+| `producer`, `recorder_version`, `started_at` | Corresponding header strings, or null if absent. |
+| `result` | Authoritative terminal result token, even if the header is stale. |
+
+`sts2pgn index <file>...` backfills metadata for plain or gzip traces, including
+scripts. A terminal token is required (`*` is accepted); active recordings without
+one are refused. The command scans to the terminal result without reconstructing
+observation deltas, then hashes the source bytes. It does not perform full trace
+validation; use `validate` separately when needed.
+
+Sidecars are durably written to a temporary file beside the destination and
+atomically published. Existing sidecars are preserved unless the CLI's explicit
+`--overwrite` option is supplied. The trace is never modified by indexing.
+Consumers must tolerate missing sidecars and treat a hash mismatch as stale
+metadata. Renaming, editing, or recompressing a trace requires regenerating its
+sidecar. Do not use the seed as a unique run identity: many runs may share it.
+
 ## Tag pairs
 
 A tag line has this shape:
@@ -84,6 +122,7 @@ Keys match `[A-Za-z][A-Za-z0-9_]*`. Within values, `\"`, `\\`, `\n`, `\r`, and `
 
 | Tag | Meaning |
 |---|---|
+| `Profile` | `recording` or `script`. New writers emit this tag; readers accept its absence on older files. See profile detection below. |
 | `Platform` | Platform identifier reported by the game. |
 | `GameStartTime` | STS2's own run key: `SerializableRun.StartTime` unix seconds, stable across save/resume. Used to find the incomplete trace of a resumed run. |
 | `GameSaveSchema` | Initial `SerializableRun` schema version. |
@@ -247,7 +286,19 @@ ordinary recording; that recording — never the script — is the conformance a
 The profile adds no grammar and no comparison semantics; `FormatVersion` and
 `projection_version` are unchanged.
 
-Producer identity decides the profile:
+### Profile detection
+
+New writers emit `[Profile "recording"]` or `[Profile "script"]` in both format
+versions. A recording contains decisions and observed state; a script proposes
+decisions. This additive tag does not change `FormatVersion`, record grammar, or
+state comparison semantics. It is separate from the game-generation inputs in
+`run.start.data.profile`.
+
+Readers use `Profile` when present. Its values are case-sensitive; unknown values,
+duplicates, and conflicts with producer identity are errors. An explicit profile
+does not waive any of that profile's required or forbidden tags. For older files
+without `Profile`, `Producer` selects the script profile and otherwise the recording
+profile applies. Producer identity remains constrained as follows:
 
 | Tag | Recording | Script |
 |---|---|---|
@@ -256,6 +307,13 @@ Producer identity decides the profile:
 
 No file carries both. A file with `Producer` is a proposal and is never an
 authoritative fixture.
+
+Writers add the inferred profile when rewriting legacy files. Recording-to-script
+conversion replaces the source profile with `script`. Continuing an existing
+append-only recording leaves its header intact. CLI `validate` detects the profile;
+`--script` explicitly requires a script. The Core validator's parameterless overload
+continues to require a recording so conformance callers do not accidentally accept
+scripts.
 
 Required script tags: `Format`, `FormatVersion`, `Producer`, `Seed`, `Mode`,
 `Ascension`, `Players`, `GameVersion`, `GameCommit`, `ModelIdHash`. The driver compares

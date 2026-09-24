@@ -52,7 +52,14 @@ public static class Sts2PgnWriter
 
     internal static void WriteMetadata(TextWriter writer, RunMetadata metadata)
     {
-        foreach (TagPair tag in metadata.Tags)
+        string profile = ScriptProfile.GetProfile(metadata);
+        List<TagPair> tags = [.. metadata.Tags];
+        if (metadata.GetValue(ScriptProfile.ProfileTag) is null)
+        {
+            int versionIndex = tags.FindIndex(tag => tag.Name == "FormatVersion");
+            tags.Insert(versionIndex + 1, new TagPair(ScriptProfile.ProfileTag, profile));
+        }
+        foreach (TagPair tag in tags)
         {
             writer.Write('[');
             writer.Write(tag.Name);
