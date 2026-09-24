@@ -247,16 +247,22 @@ internal sealed class RecordingSession : IDisposable
         string sourceJson = JsonSerializationUtility.ToJson(save);
         JsonNode? sourceData = JsonNode.Parse(sourceJson);
         JsonElement portableState = InitialStateProjector.Capture(save, _playerSlots);
-        long? runStartSequence = Record("run.start", new
+        Dictionary<string, object> data = new()
         {
-            source_snapshot = new
+            ["source_snapshot"] = new
             {
                 schema_version = save.SchemaVersion,
                 encoding = "sts2-save-json",
                 data = sourceData,
             },
-            state = portableState,
-        });
+            ["state"] = portableState,
+        };
+        if (RunProfileCapture.Get(_state) is { } discoveredActs)
+        {
+            data["profile"] = new { discovered_acts = discoveredActs };
+        }
+
+        long? runStartSequence = Record("run.start", data);
 
         if (runStartSequence.HasValue)
         {
