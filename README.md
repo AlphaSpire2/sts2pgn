@@ -134,16 +134,32 @@ dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll validate my-run.sts2pgn
 
 # Headers, record statistics, run progress, and observation coverage
 dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll summarize my-run.sts2pgn
+
+# Create a searchable sidecar for an existing archive (add --overwrite to rebuild)
+dotnet src/STS2PGN.Tool/bin/Release/net9.0/sts2pgn.dll index my-run.sts2pgn.gz
 ```
 
 `--no-recover` treats a crash-truncated final line as an error instead of recovering the
-prefix; `validate --quiet` prints only files with problems; `validate --script` checks a
-decision script against the script profile instead of the recording profile.
+prefix; `validate --quiet` prints only files with problems. Validation detects
+`Profile "recording"` or `Profile "script"`, with legacy producer-tag inference when
+absent; `validate --script` explicitly requires a decision script.
 
-All three commands (`validate`, `summarize`, and `to-script`) read plain `.sts2pgn`
+All four commands (`validate`, `summarize`, `to-script`, and `index`) read plain `.sts2pgn`
 and gzip-compressed `.sts2pgn.gz` files transparently. `to-script` writes a plain
 decision script; its default output for `run.sts2pgn.gz` is `run.script.sts2pgn`.
 Standard gzip tools can compress or decompress files for other consumers.
+
+Completed recordings automatically receive a small `.sts2pgn.gz.meta.json` sidecar
+with seed, profile, characters, ascension, build, result, and archive identity. Find
+a seed without decompressing the recordings (PowerShell or Bash):
+
+```text
+rg -l -F '"seed": "EXAMPLESEED"' /path/to/recordings -g '*.meta.json'
+```
+
+Sidecars are optional and rebuildable with `index`; existing files are preserved
+unless `--overwrite` is given. Indexing requires a terminal token, never edits the
+trace, and is not a substitute for validation. See [the sidecar schema](docs/format.md#search-metadata-sidecars).
 
 ## Install the recorder mod
 

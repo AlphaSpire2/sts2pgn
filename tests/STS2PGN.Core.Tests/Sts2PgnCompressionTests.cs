@@ -28,7 +28,7 @@ public sealed class Sts2PgnCompressionTests : IDisposable
 
         Assert.Equal(path + ".gz", compressed);
         Assert.False(File.Exists(path));
-        Assert.Equal(new[] { compressed }, Directory.GetFiles(_directory));
+        Assert.Equal(new[] { compressed, compressed + Sts2PgnSidecar.Extension }.Order(), Directory.GetFiles(_directory).Order());
         Assert.True(new FileInfo(compressed).Length < Encoding.UTF8.GetByteCount(text));
         using StreamReader reader = Sts2PgnFile.OpenText(compressed);
         string actual = reader.ReadToEnd();
@@ -96,6 +96,7 @@ public sealed class Sts2PgnCompressionTests : IDisposable
     [InlineData("a.sts2pgn.gz", true)]
     [InlineData("a.sts2pgn.gz.compressing-id.tmp", false)]
     [InlineData("a.playback.json", false)]
+    [InlineData("a.sts2pgn.gz.meta.json", false)]
     [InlineData("a.gz", false)]
     public void PlaybackDiscoveryRecognizesOnlyTraceFilenames(string path, bool expected) =>
         Assert.Equal(expected, Sts2PgnFile.IsTracePath(path));
@@ -138,6 +139,7 @@ public sealed class Sts2PgnCompressionTests : IDisposable
     [InlineData("validate")]
     [InlineData("summarize")]
     [InlineData("to-script")]
+    [InlineData("index")]
     public void CorruptGzipReportsCommandFailure(string command)
     {
         string path = Path.Combine(_directory, "corrupt.sts2pgn.gz");

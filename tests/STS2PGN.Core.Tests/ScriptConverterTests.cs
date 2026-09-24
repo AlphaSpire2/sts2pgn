@@ -68,7 +68,7 @@ public sealed class ScriptConverterTests
         Assert.Null(script.Metadata.GetValue("GameStartTime"));
         Assert.Equal("CUSTOM", script.Metadata.GetValue("Mode"));
         Assert.Equal("TESTSEED", script.Metadata.GetValue("Seed"));
-        Assert.Equal(["Format", "FormatVersion", "Producer"], script.Metadata.Tags.Take(3).Select(tag => tag.Name));
+        Assert.Equal(["Format", "FormatVersion", "Profile", "Producer"], script.Metadata.Tags.Take(4).Select(tag => tag.Name));
         Assert.Equal(
             ["run.start", "map.choose", "rest.choose", "event.crystal_sphere.set_tool", "event.crystal_sphere.click", "event.crystal_sphere.proceed"],
             script.Entries.Select(entry => entry.Kind));

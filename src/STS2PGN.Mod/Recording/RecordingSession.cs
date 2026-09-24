@@ -222,7 +222,8 @@ internal sealed class RecordingSession : IDisposable
             _streamResources.Dispose();
             if (Path is not null)
             {
-                Path = Sts2PgnFileFinalizer.FinalizeRecording(Path, result);
+                Path = Sts2PgnFileFinalizer.FinalizeRecording(Path, result,
+                    exception => Godot.GD.PushWarning($"STS2PGN: recording saved, but metadata indexing failed: {exception.Message}"));
             }
         }
     }

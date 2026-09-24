@@ -42,6 +42,7 @@ internal static class SummarizeCommand
         RunRecord record = trace.Record;
         RunMetadata tags = record.Metadata;
         Console.WriteLine(trace.Path);
+        Write("Profile", ScriptProfile.GetProfile(tags));
         Write("Format", $"{tags.GetValue("Format")} v{tags.GetValue("FormatVersion")} (recorder {tags.GetValue("RecorderVersion")})");
         Write("RunId", tags.GetValue("RunId"));
         Write("Game", $"{tags.GetValue("GameVersion")} commit {tags.GetValue("GameCommit")}, model hash {tags.GetValue("ModelIdHash")}");

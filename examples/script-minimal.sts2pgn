@@ -1,5 +1,6 @@
 [Format "STS2PGN"]
 [FormatVersion "1"]
+[Profile "script"]
 [Producer "alphaspire/0.1.0"]
 [Seed "EXAMPLESEED"]
 [Mode "CUSTOM"]

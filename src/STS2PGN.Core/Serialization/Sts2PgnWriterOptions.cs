@@ -11,7 +11,7 @@ public sealed record Sts2PgnWriterOptions
 
     /// <summary>
     /// Profile used by the pre-write validation. When null, the profile is inferred from the
-    /// metadata: a <c>Producer</c> tag selects the decision-script profile, otherwise the recording profile.
+    /// metadata: use <c>Profile</c>, falling back to <c>Producer</c> for legacy scripts.
     /// </summary>
     public Sts2PgnValidationMode? ValidationMode { get; init; }
 }

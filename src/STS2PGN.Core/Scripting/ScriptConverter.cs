@@ -20,6 +20,7 @@ public static class ScriptConverter
     private static readonly HashSet<string> DroppedTags = new(StringComparer.Ordinal)
     {
         ScriptProfile.RecorderVersionTag,
+        ScriptProfile.ProfileTag,
         "RunId",
         "StartedAt",
         "Result",
@@ -38,6 +39,8 @@ public static class ScriptConverter
     public static RunRecord FromRecording(RunRecord recording, string producer)
     {
         ArgumentNullException.ThrowIfNull(recording);
+        // Do not let conversion erase an invalid or conflicting source declaration.
+        _ = ScriptProfile.GetProfile(recording.Metadata);
         if (!ScriptProfile.TryParseProducer(producer, out _, out _))
         {
             throw new ArgumentException("Producer must have the form 'name/version' with a lowercase name.", nameof(producer));
@@ -59,9 +62,10 @@ public static class ScriptConverter
             tags.Add(new TagPair("Mode", ScriptProfile.RequiredMode));
         }
 
-        // Keep the header readable: Producer right after FormatVersion, where RecorderVersion was.
+        // Keep Profile and Producer together immediately after FormatVersion.
         int formatVersionIndex = tags.FindIndex(tag => tag.Name == "FormatVersion");
         tags.Insert(formatVersionIndex < 0 ? 0 : formatVersionIndex + 1, new TagPair(ScriptProfile.ProducerTag, producer));
+        tags.Insert(formatVersionIndex < 0 ? 0 : formatVersionIndex + 1, new TagPair(ScriptProfile.ProfileTag, ScriptProfile.Script));
 
         RunRecordBuilder builder = new(tags);
         foreach (RunRecordEntry entry in recording.Entries)

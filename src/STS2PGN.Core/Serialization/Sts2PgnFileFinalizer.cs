@@ -1,7 +1,9 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using STS2PGN.Model;
+using STS2PGN.Parsing;
 
 namespace STS2PGN.Serialization;
 
@@ -15,8 +17,10 @@ public static class Sts2PgnFileFinalizer
     /// Finalizes a completed recording, then replaces it with a verified gzip file.
     /// The plain recording survives any failure before the compressed file is published.
     /// Existing compressed files are never overwritten. Incomplete recordings must stay plain.
+    /// Publishes an optional search sidecar afterwards; indexing failures are warnings and
+    /// are also delivered to onMetadataError when supplied.
     /// </summary>
-    public static string FinalizeRecording(string path, RunResult result)
+    public static string FinalizeRecording(string path, RunResult result, Action<Exception>? onMetadataError = null)
     {
         FinalizeResultHeader(path, result);
         string compressedPath = path + Sts2PgnFile.GzipExtension;
@@ -54,6 +58,16 @@ public static class Sts2PgnFileFinalizer
             // Publish on the same filesystem, then remove the original only after verification.
             File.Move(temporaryPath, compressedPath, overwrite: false);
             File.Delete(path);
+            try
+            {
+                Sts2PgnSidecar.Write(compressedPath);
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or Sts2PgnParseException or JsonException)
+            {
+                // The archive is already complete and usable. Metadata can be regenerated.
+                System.Diagnostics.Trace.TraceWarning($"Could not index '{compressedPath}': {exception.Message}");
+                onMetadataError?.Invoke(exception);
+            }
             return compressedPath;
         }
         finally
