@@ -91,7 +91,7 @@ public static class ScriptConverter
         return script;
     }
 
-    /// <summary>Keeps the portable state and drops the raw save snapshot and anything else.</summary>
+    /// <summary>Keeps portable state and generation inputs, dropping the raw save snapshot.</summary>
     private static JsonElement StripRunStart(JsonElement payload)
     {
         JsonObject result = new();
@@ -102,10 +102,15 @@ public static class ScriptConverter
 
         JsonObject data = new();
         if (payload.TryGetProperty("data", out JsonElement dataElement)
-            && dataElement.ValueKind == JsonValueKind.Object
-            && dataElement.TryGetProperty("state", out JsonElement state))
+            && dataElement.ValueKind == JsonValueKind.Object)
         {
-            data["state"] = JsonNode.Parse(state.GetRawText());
+            foreach (string field in new[] { "state", "profile" })
+            {
+                if (dataElement.TryGetProperty(field, out JsonElement value))
+                {
+                    data[field] = JsonNode.Parse(value.GetRawText());
+                }
+            }
         }
 
         result["data"] = data;

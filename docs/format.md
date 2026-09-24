@@ -1,6 +1,6 @@
 # STS2PGN Format Versions 1 and 2
 
-Status: **recorder 0.10.0 implements version-two lossless observation deltas and state projection version 1**.
+Status: **recorder 0.10.1 implements version-two lossless observation deltas, state projection version 1, and run-start profile inputs**.
 
 New recordings use `FormatVersion "2"`. Readers also support version 1, which
 always carries full observations. Version 2 changes only how observations are
@@ -168,6 +168,26 @@ The first record must be `run.start`. Its `data` contains both:
 
 - `source_snapshot`: the exact STS2 `SerializableRun` JSON and schema information, used by compatible in-game replay; and
 - `state`: the portable normalized state projection, used by simulators.
+
+Recorder 0.10.1 also writes optional `data.profile` generation inputs:
+
+```json
+{"discovered_acts":["ACT.OVERGROWTH","ACT.UNDERDOCKS"]}
+```
+
+The list is sorted by ordinal model ID. It snapshots the local progress profile
+at `RunState.CreateForNewRun`, before setup and the run-start event, and is tied
+to that run instance. The same progress profile controls whether act selection
+rolls an alternate act or takes an undiscovered one outright. This metadata is
+outside `data.state`, so it does not change projection version 1 or its digests.
+An empty list is an explicit statement that no acts were discovered.
+
+Older recordings omit `profile`. A new trace opened from a loaded save also
+omits it when the original generation-time profile is unavailable; it must not
+substitute the current progress profile. Continuing an existing trace preserves
+its original `run.start`. Consumers must document their missing-profile policy;
+`sts2sim` assumes all supported acts discovered. Recording-to-script conversion
+preserves `profile` along with `state`.
 
 The portable projection is authoritative for cross-implementation comparison. A simulator must not need to understand private STS2 serialization details to initialize a supported run. Projection version 1 defines the initial `run_start.core` and live `run.core` scopes below; the source snapshot is retained for same-build provenance and fallback tooling.
 

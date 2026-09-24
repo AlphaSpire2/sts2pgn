@@ -13,9 +13,36 @@ using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
 using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves;
 using STS2PGN.Mod.Recording;
 
 namespace STS2PGN.Mod.Integration;
+
+[HarmonyPatch(typeof(RunState), nameof(RunState.CreateForNewRun))]
+internal static class NewRunProfilePatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(out string[]? __state)
+    {
+        string[]? discoveredActs = null;
+        RecorderService.ExecuteSafely("capturing run profile", () =>
+            discoveredActs = SaveManager.Instance.Progress.DiscoveredActs
+                .Select(act => PortablePayloads.ModelId(act)!)
+                .Order(StringComparer.Ordinal)
+                .ToArray());
+        __state = discoveredActs;
+    }
+
+    [HarmonyPostfix]
+    private static void Postfix(RunState __result, string[]? __state)
+    {
+        if (__state is not null)
+        {
+            RecorderService.ExecuteSafely("retaining run profile", () =>
+                RunProfileCapture.Remember(__result, __state));
+        }
+    }
+}
 
 [HarmonyPatch(typeof(PlayerCmd), nameof(PlayerCmd.EndTurn))]
 internal static class DirectEndTurnPatch

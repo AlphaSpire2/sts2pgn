@@ -1,11 +1,39 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using STS2PGN.Model;
+using STS2PGN.Parsing;
 using STS2PGN.Scripting;
+using STS2PGN.Serialization;
 using STS2PGN.Validation;
 
 namespace STS2PGN.Tests;
 
 public sealed class ScriptConverterTests
 {
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("[\"ACT.OVERGROWTH\",\"ACT.UNDERDOCKS\"]")]
+    public void ProfileGenerationInputsSurviveTransportAndScriptConversion(string discoveredActs)
+    {
+        JsonNode payload = JsonNode.Parse(RecordedRunStart)!;
+        payload["data"]!["profile"] = new JsonObject
+        {
+            ["discovered_acts"] = JsonNode.Parse(discoveredActs),
+        };
+        RunRecord recording = TestRecordFactory.CreateBuilder()
+            .AppendJson("run.start", payload.ToJsonString())
+            .Build();
+        RunRecord roundTrip = Sts2PgnParser.Parse(Sts2PgnWriter.Write(recording));
+        RunRecord script = ScriptConverter.FromRecording(roundTrip, "sts2pgn-tool/0.10.1");
+        foreach (RunRecord record in new[] { roundTrip, script })
+        {
+            JsonElement acts = record.Entries[0].Payload.GetProperty("data")
+                .GetProperty("profile").GetProperty("discovered_acts");
+            Assert.True(JsonElement.DeepEquals(JsonSerializer.Deserialize<JsonElement>(discoveredActs), acts));
+        }
+        Assert.False(script.Entries[0].Payload.GetProperty("data").TryGetProperty("source_snapshot", out _));
+    }
+
     private const string RecordedRunStart =
         "{\"actor\":null,\"data\":{\"source_snapshot\":{\"schema_version\":1,\"data\":{}},\"state\":"
         + "{\"scope\":\"run_start.core\",\"acts\":[{\"index\":0,\"model_id\":\"ACT.OVERGROWTH\"}],"

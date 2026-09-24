@@ -7,6 +7,8 @@ The long-term purpose is simulator conformance testing: record a run in the real
 > [!IMPORTANT]
 > Recorder **0.10.0** adds FormatVersion 2 lossless state deltas and automatic gzip compression of completed recordings. Consumers need version-two support before reading new recordings. In-game smoke testing with matching STS2 assemblies remains required.
 >
+> Recorder **0.10.1** also records discovered-act inputs in `run.start.data.profile` for newly created runs. Older recordings remain readable; `sts2sim` assumes all acts discovered when this metadata is absent.
+>
 > Recorder 0.8.0 introduced the *decision-script* profile and in-game *playback driver*: a simulator proposes a run as a script, the mod executes it in the real game while recording normally, and the recording is replayed back through the simulator.
 
 ## Architecture
@@ -23,7 +25,7 @@ simulator -> decision script -> playback driver in the real game (recording) -> 
 
 The trace contains initial state, ordered semantic actions, compatibility metadata, and authoritative state observations. Cosmetic input and presentation timing are deliberately excluded.
 
-Recorder **0.10.0** writes new recordings using **FormatVersion 2** with lossless state deltas and periodic full
+Recorder **0.10.0 and later** writes new recordings using **FormatVersion 2** with lossless state deltas and periodic full
 checkpoints. Every observation reconstructs to its complete original state and digest
 before validation or replay. Full checkpoints at start/resume boundaries prevent
 state from leaking across a loaded save. Version-one recordings and scripts remain
