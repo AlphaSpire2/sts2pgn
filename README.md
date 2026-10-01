@@ -5,6 +5,12 @@ STS2PGN records Slay the Spire 2 runs as deterministic, human-readable traces in
 The long-term purpose is simulator conformance testing: record a run in the real game, feed the resulting `.sts2pgn` file to an external simulator, replay the same decisions, and identify the first state difference between the simulator and STS2.
 
 > [!IMPORTANT]
+> Recorder **0.11.0** records terminal reward/treasure finalization once, immediately before
+> committed `map.choose`. Opening or closing the map is presentation-only, so taking a reward
+> after inspecting the map remains in the reward phase. Playback drives the finalization and
+> destination together. Historical map-opening traces are not migrated or supported by a
+> compatibility layer. The wire format remains version two.
+>
 > Recorder **0.10.0** adds FormatVersion 2 lossless state deltas and automatic gzip compression of completed recordings. Consumers need version-two support before reading new recordings. In-game smoke testing with matching STS2 assemblies remains required.
 >
 > Recorder **0.10.1** also records discovered-act inputs in `run.start.data.profile` for newly created runs. Older recordings remain readable; `sts2sim` assumes all acts discovered when this metadata is absent.

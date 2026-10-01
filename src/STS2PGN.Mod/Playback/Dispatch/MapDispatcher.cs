@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Runs;
+using STS2PGN.Mod.Recording;
 using STS2PGN.Scripting;
 
 namespace STS2PGN.Mod.Playback.Dispatch;
@@ -21,13 +22,14 @@ internal sealed class MapDispatcher : IDecisionDispatcher
     public bool IsReady(ScriptDecision decision) => decision.Kind switch
     {
         "map.choose" => NMapScreen.Instance is { IsOpen: true } screen && TravelablePoints(screen).Count > 0,
-        "room.proceed" => LiveGame.TopOverlay is NRewardsScreen || TreasureProceedButton() is not null,
+        "room.proceed" => LiveGame.TopOverlay is NRewardsScreen || TreasureProceedButton() is not null
+            || (RecorderService.CanDeferRoomProceed && NMapScreen.Instance is { IsOpen: true }),
         "act.next" => LiveGame.TopOverlay is NRewardsScreen,
         _ => false,
     };
 
     /// <summary>
-    /// The treasure room records room.proceed from its own Proceed button (no rewards screen):
+    /// The treasure room has its own Proceed button (no rewards screen):
     /// enabled with the Proceed label once relic picking has finished, Skip-labelled while it is
     /// still open (that click would be treasure.skip_relic instead).
     /// </summary>
@@ -40,8 +42,8 @@ internal sealed class MapDispatcher : IDecisionDispatcher
     public bool SettlesByObservation(ScriptDecision decision) => decision.Kind != "room.proceed";
 
     /// <summary>
-    /// Leaving a rest site, shop, treasure room, event shop, or finished event is presentation-only
-    /// (the recorder never writes it), so a script goes straight from the room's last decision to map.choose.
+    /// Opening the map at a rest site, shop, treasure room, event shop, or finished event is presentation-only
+    /// (the recorder never writes the click). Treasure's canonical finalization is paired with map.choose.
     /// Click the room's Proceed button the way a player would; the map then opens.
     /// </summary>
     public bool TryAdvanceSurface(ScriptDecision decision)
@@ -58,6 +60,15 @@ internal sealed class MapDispatcher : IDecisionDispatcher
 
         if (decision.Kind == "map.choose" && CrystalSphereDispatcher.TryProceedFinished())
         {
+            return true;
+        }
+
+        // A canonical reward departure is paired with map.choose by the driver.
+        // Opening the map is presentation only and emits no acknowledgement.
+        if (decision.Kind == "map.choose" && NMapScreen.Instance is not { IsOpen: true }
+            && RecorderService.CanDeferRoomProceed && LiveGame.TopOverlay is NRewardsScreen)
+        {
+            _ = RunManager.Instance.ProceedFromTerminalRewardsScreen();
             return true;
         }
 
