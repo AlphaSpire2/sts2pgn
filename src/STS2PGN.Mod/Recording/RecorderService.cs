@@ -30,6 +30,7 @@ internal static class RecorderService
     private static readonly Dictionary<ulong, CardReward> ActiveCardRewards = [];
     private static readonly Dictionary<(ulong PlayerId, int SetId), RewardsSet> ActiveRewardSets = [];
     private static CombatRoom? _lastCombatRoomWithRewards;
+    private static readonly RewardDeparture RewardDeparture = new();
     private static readonly Dictionary<ulong, long> PendingRestActions = [];
     private static readonly Dictionary<GameAction, long> ActionSequences = [];
     private static readonly FieldInfo? CurrentRoomsField = typeof(RunState).GetField(
@@ -194,10 +195,27 @@ internal static class RecorderService
         {
             if (_state?.CurrentRoom is { } room && room.ModelId?.Entry != "CRYSTAL_SPHERE")
             {
+                if (CanDeferRoomProceed)
+                {
+                    return;
+                }
+
+                // Resuming a parent or finishing a rewardless fight is a real
+                // transition. It must not leave a pending map departure behind.
+                RewardDeparture.Clear();
                 TryRecord("room.proceed", new { }, LocalPlayerId());
             }
         });
     }
+
+    private static bool ResumesParentAfterCombat =>
+        _state is { CurrentRoomCount: > 1, CurrentRoom: CombatRoom { ShouldResumeParentEventAfterCombat: true } };
+
+    /// <summary>A completed combat reward phase or treasure selection may defer map opening.</summary>
+    public static bool CanDeferRoomProceed => RewardDeparture.CanDefer(
+        _state?.CurrentRoom,
+        CombatManager.Instance.IsInProgress || CombatManager.Instance.IsStarting,
+        ResumesParentAfterCombat);
 
     public static void RecordEventAdvance() => ExecuteSafely("capturing event dialogue", () =>
         _pendingEventAdvanceSequence = TryRecord("event.advance", new
@@ -267,6 +285,7 @@ internal static class RecorderService
         if (set.Room is CombatRoom combatRoom)
         {
             _lastCombatRoomWithRewards = combatRoom;
+            RewardDeparture.Offered(combatRoom);
         }
         ObserveAfter(_lastDecisionSequence, "reward.offered");
     }
@@ -664,6 +683,16 @@ internal static class RecorderService
                 _pendingUndoEndTurnSequence = TryRecord("combat.undo_end_turn", new { turn = undo.turnNumber }, actor);
                 break;
             case NetMoveToMapCoordAction move:
+                // Record finalization while the old room is still current and
+                // before map.choose starts room-exit hooks and reward skipping.
+                if (RewardDeparture.CommitMapTravel(
+                    _state?.CurrentRoom,
+                    CombatManager.Instance.IsInProgress || CombatManager.Instance.IsStarting,
+                    ResumesParentAfterCombat))
+                {
+                    TryRecord("room.proceed", new { }, actor);
+                }
+
                 TryRecord("map.choose", new { col = move.destination.col, row = move.destination.row }, actor);
                 break;
             case NetPickRelicAction relic when relic.relicIndex.HasValue:
@@ -685,6 +714,7 @@ internal static class RecorderService
                 TryRecord("treasure.skip_relic", new { }, actor);
                 break;
             case NetVoteToMoveToNextActAction:
+                RewardDeparture.Clear();
                 TryRecord("act.next", new { }, actor);
                 break;
             case NetVoteForMapCoordAction:
@@ -831,6 +861,13 @@ internal static class RecorderService
             return;
         }
 
+        RewardDeparture.Entered(room);
+        // Treasure selection also has an explicit finalization in the simulator.
+        // Its Proceed button only opens the map; the relic choice stays separate.
+        if (room is TreasureRoom)
+        {
+            RewardDeparture.Offered(room);
+        }
         RoomTraceData data = ToRoomTrace(room, _state!.CurrentRoomCount);
         RoomStack.Add(data);
         long? sequence = TryRecord("room.enter", data);
@@ -839,6 +876,7 @@ internal static class RecorderService
 
     private static void OnRoomExited()
     {
+        RewardDeparture.Clear();
         RoomTraceData? data = RoomStack.Count > 0 ? RoomStack[^1] : null;
         if (RoomStack.Count > 0)
         {
@@ -1000,6 +1038,7 @@ internal static class RecorderService
 
     private static void StopSession()
     {
+        RewardDeparture.Clear();
         if (_session is null)
         {
             _state = null;

@@ -25,6 +25,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Exercise the actual recorder boundary without loading Godot/game assemblies. -->
+    <Compile Include="../../src/STS2PGN.Mod/Recording/RewardDeparture.cs" Link="Recording/RewardDeparture.cs" />
     <None Include="../../examples/minimal.sts2pgn" Link="examples/minimal.sts2pgn" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../examples/delta-minimal.sts2pgn" Link="examples/delta-minimal.sts2pgn" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

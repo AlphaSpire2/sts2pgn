@@ -34,6 +34,43 @@ The recorder must not treat a UI click as accepted merely because it occurred. F
 
 ### Simulator consumer
 
+#### Reward finalization and map navigation
+
+Recorder 0.11.0 treats map visibility as presentation. A completed combat's
+terminal reward phase remains open in the recording while the player inspects
+the map, returns to rewards, cancels a card choice, or uses/discards a potion.
+These gameplay interactions retain their order, IDs, outcomes, and captured
+observations. The recorder holds only a room-identity marker; it does not buffer
+or rewrite rewards or state snapshots.
+
+When accepted map movement begins, the recorder writes one canonical
+`room.proceed` immediately before `map.choose`, while the old room is still
+current. This means "reward decisions are final", not "the map opened".
+Treasure selection uses the same departure boundary. Shops, rest sites, and
+finished events do not gain a synthetic Proceed. The marker survives collecting
+all rewards and repeated map openings, but is cleared by room exit, act change,
+and session shutdown/reload. Rewards offered during entry to a restored combat
+establish a new marker for that room.
+
+Proceeds that resume a parent event or finish a combat without rewards remain
+immediate. Boss/act progression retains its existing `act.next` path; a first
+boss followed by another map destination uses ordinary map departure. State
+observations remain authoritative and are never dropped to hide a mismatch.
+Sequence numbers are assigned at emission, and the existing observation/delta
+writer uses those sequences directly.
+
+The in-game driver consumes canonical Proceed plus destination as a pair. It
+opens the map as an internal presentation step, submits the destination, and
+verifies both records were emitted adjacently. It does not wait for a map-open
+acknowledgement. An unpaired reward-finalizing Proceed, or map travel omitting
+required finalization, fails explicitly. Stateful standalone Proceeds retain
+their normal acknowledgement path.
+
+No legacy normalization or converter is provided. Historical recordings that
+encode reward backtracking after a map-opening Proceed are outside this contract.
+
+#### Consumer checks
+
 The simulator adapter must:
 
 1. validate the format and supported projection version;

@@ -1,6 +1,6 @@
 # STS2PGN Format Versions 1 and 2
 
-Status: **recorder 0.10.1 implements version-two lossless observation deltas, state projection version 1, and run-start profile inputs**.
+Status: **recorder 0.11.0 implements canonical reward departure, version-two lossless observation deltas, state projection version 1, and run-start profile inputs**.
 
 New recordings use `FormatVersion "2"`. Readers also support version 1, which
 always carries full observations. Version 2 changes only how observations are
@@ -363,8 +363,11 @@ Records:
   submission context from the live game and treats this field as a precondition: when it
   is present and disagrees with the live state, playback stops as a mismatch. Producers
   should emit it when they know the intended context; older scripts may omit it.
-- `room.proceed` is only meaningful on a terminal rewards screen; proceeding from a rest
-  site, shop, or treasure room is presentation-only and never recorded.
+- `room.proceed` finalizes terminal combat rewards or treasure selection immediately before
+  `map.choose`. The two decisions must be adjacent when they represent map departure;
+  opening or closing the map is not recorded. Proceeds that resume a parent event or finish
+  a rewardless combat remain immediate standalone decisions. Rest/shop/finished-event map
+  opening adds no Proceed. Act progression remains `act.next`.
 - `event.advance` is one record per dialogue page, as the recorder emits it.
 - Outcome records are allowed but ignored with a warning (`script_ignored_record`):
   `state.observe`, `*.resolve`, `act.enter`, `room.enter`, `room.exit`, and

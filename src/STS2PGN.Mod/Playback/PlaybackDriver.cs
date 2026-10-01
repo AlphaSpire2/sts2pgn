@@ -10,7 +10,8 @@ namespace STS2PGN.Mod.Playback;
 /// Executes one script's decisions in order: wait until the game is idle and the decision's surface
 /// is present → verify the script's fingerprints against the live offer → submit through the game's
 /// own input path → wait for the recorder to record the decision and emit its completion observation.
-/// The driver never advances on its own clock; only recorder signals move it forward.
+/// Canonical reward finalization and map.choose are driven and acknowledged together;
+/// opening the map is an internal presentation step, not a recorded decision.
 /// </summary>
 internal sealed class PlaybackDriver
 {
@@ -99,12 +100,14 @@ internal sealed class PlaybackDriver
                     continue;
                 }
 
-                if (!await DriveAsync(decision, nextDecision))
+                int completed = await DriveAsync(decision, nextDecision);
+                if (completed == 0)
                 {
                     return;
                 }
 
-                _report.DecisionsCompleted++;
+                _report.DecisionsCompleted += completed;
+                index += completed - 1;
             }
 
             if (_waitForIdleAfterCompletion)
@@ -137,19 +140,20 @@ internal sealed class PlaybackDriver
         }
     }
 
-    private async Task<bool> DriveAsync(ScriptDecision decision, ScriptDecision? nextDecision)
+    private async Task<int> DriveAsync(
+        ScriptDecision decision, ScriptDecision? nextDecision, ScriptDecision? departure = null)
     {
         IDecisionDispatcher? dispatcher = Dispatchers.FirstOrDefault(candidate => candidate.Handles(decision.Kind));
         if (dispatcher is null)
         {
             _report.Stop(PlaybackStatus.GameError, PlaybackReasons.UnsupportedRecord, $"no driver mapping for {decision.Kind}", decision);
-            return false;
+            return 0;
         }
 
         if (!RecorderService.IsRecording)
         {
             _report.Stop(PlaybackStatus.GameError, PlaybackReasons.Exception, "the recorder stopped before the decision could be driven", decision);
-            return false;
+            return 0;
         }
 
         PresentationDelay? advanceGate = null;
@@ -203,7 +207,7 @@ internal sealed class PlaybackDriver
         {
             _report.Stop(PlaybackStatus.GameError, PlaybackReasons.Timeout, $"the game never reached a state where {decision.Kind} could be submitted", decision);
             _report.Offered = LiveGame.ToJson(DescribeSurface());
-            return false;
+            return 0;
         }
 
         // Some terminal combat flows proceed without another click. In
@@ -223,11 +227,11 @@ internal sealed class PlaybackDriver
                     decision);
                 _report.Expected = decision.Data;
                 _report.Offered = automatic.Data;
-                return false;
+                return 0;
             }
 
             _lastMatchedDecisionSequence = automatic.Sequence;
-            return true;
+            return 1;
         }
 
         VerifyResult verification;
@@ -238,13 +242,38 @@ internal sealed class PlaybackDriver
         catch (Exception exception)
         {
             _report.Stop(PlaybackStatus.GameError, PlaybackReasons.Exception, $"verification threw: {exception}", decision);
-            return false;
+            return 0;
         }
 
         if (!verification.Ok)
         {
             _report.StopWithMismatch(decision, verification.Message, verification.Expected, verification.Offered);
-            return false;
+            return 0;
+        }
+
+        if (decision.Kind == "room.proceed" && RecorderService.CanDeferRoomProceed)
+        {
+            if (nextDecision?.Kind != "map.choose")
+            {
+                _report.Stop(PlaybackStatus.StoppedAtRecord, PlaybackReasons.Validation,
+                    "reward finalization must be immediately followed by map.choose", decision);
+                return 0;
+            }
+
+            // The map is UI. Drive the destination and verify both canonical
+            // records together, rather than waiting for a map-open record.
+            ScriptDecision? following = nextDecision.Ordinal + 1 < _script.Decisions.Count
+                ? _script.Decisions[nextDecision.Ordinal + 1]
+                : null;
+            int completed = await DriveAsync(nextDecision, following, decision);
+            return completed == 0 ? 0 : completed + 1;
+        }
+
+        if (decision.Kind == "map.choose" && RecorderService.CanDeferRoomProceed && departure is null)
+        {
+            _report.Stop(PlaybackStatus.StoppedAtRecord, PlaybackReasons.Validation,
+                "leaving combat rewards requires room.proceed immediately before map.choose", decision);
+            return 0;
         }
 
         long baseline = RecorderService.LastDecisionSequence ?? 0;
@@ -255,7 +284,7 @@ internal sealed class PlaybackDriver
         catch (Exception exception)
         {
             _report.Stop(PlaybackStatus.GameError, PlaybackReasons.Exception, $"submit threw: {exception}", decision);
-            return false;
+            return 0;
         }
 
         (long Tick, long Sequence, string Kind, JsonElement Data)? recorded = null;
@@ -267,7 +296,7 @@ internal sealed class PlaybackDriver
         {
             _report.Stop(PlaybackStatus.GameError, PlaybackReasons.Timeout, $"the recorder never recorded {decision.Kind} after submission", decision);
             _report.Offered = LiveGame.ToJson(DescribeSurface());
-            return false;
+            return 0;
         }
 
         if (FindRecordedMismatch(decision, recorded!.Value.Data) is { } mismatchField)
@@ -275,7 +304,19 @@ internal sealed class PlaybackDriver
             _report.Stop(PlaybackStatus.StoppedAtRecord, PlaybackReasons.RecordedMismatch, $"the game accepted a different '{mismatchField}' than the script", decision);
             _report.Expected = decision.Data;
             _report.Offered = recorded.Value.Data;
-            return false;
+            return 0;
+        }
+
+        if (departure is not null)
+        {
+            var finalized = FindRecorded("room.proceed", baseline);
+            if (finalized is null || finalized.Value.Sequence + 1 != recorded.Value.Sequence
+                || FindRecordedMismatch(departure, finalized.Value.Data) is not null)
+            {
+                _report.Stop(PlaybackStatus.StoppedAtRecord, PlaybackReasons.RecordedMismatch,
+                    "map travel did not record exactly one reward finalization immediately before map.choose", departure);
+                return 0;
+            }
         }
 
         _lastMatchedDecisionSequence = recorded.Value.Sequence;
@@ -299,12 +340,12 @@ internal sealed class PlaybackDriver
             if (!settled)
             {
                 _report.Stop(PlaybackStatus.GameError, PlaybackReasons.Timeout, $"{decision.Kind} was recorded as sequence {recordedSequence} but never settled", decision);
-                return false;
+                return 0;
             }
 
         }
 
-        return true;
+        return 1;
     }
 
     private static bool SafeIsReady(IDecisionDispatcher dispatcher, ScriptDecision decision)

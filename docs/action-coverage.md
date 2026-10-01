@@ -22,7 +22,7 @@ Legend:
 | `act.next` | `NetVoteToMoveToNextActAction` | Record accepted synchronized action. | Direct |
 | `room.enter` | `RunManager.RoomEntered` | Derive room identity and stack from `RunState`. | Event |
 | `room.exit` | `RunManager.RoomExited` | Capture state after authoritative exit. | Event |
-| `room.proceed` | `RunManager.ProceedFromTerminalRewardsScreen` | Record the common progression command; Crystal Sphere uses its more specific record. | Direct |
+| `room.proceed` | `RunManager.ProceedFromTerminalRewardsScreen`; accepted `NetMoveToMapCoordAction` | Record parent-event/rewardless-combat progression immediately; finalize terminal rewards/treasure once immediately before map travel. Map opening itself is omitted. | Direct/Canonical |
 | `map.choose` | `NetMoveToMapCoordAction`, `NetVoteForMapCoordAction`, `MapSelectionSynchronizer.PlayerVoteChanged` | Prefer accepted synchronized game action; store destination coordinate and source location. | Event/Direct |
 
 ## Combat
@@ -102,7 +102,7 @@ The reference mod exposes additional progression controls that must be audited e
 | Reference action | Proposed representation | Status |
 |---|---|---|
 | `advance_dialogue` | `event.advance` for ancient-event dialogue | Direct |
-| `proceed` | `room.proceed` for terminal rewards; Crystal Sphere has its specific record; rest/shop map opening is presentation-only | Direct/Excluded |
+| `proceed` | Terminal reward/treasure finalization is recorded at committed map travel; stateful progression stays immediate. Crystal Sphere has its specific record; rest/shop map opening is presentation-only. | Direct/Canonical/Excluded |
 | `select_card`, confirm/cancel selection | final `choice.cards` or `choice.index` synchronized result | Event |
 | `select_bundle`, confirm/cancel bundle | `choice.index` with bundle fingerprints | Direct/Event |
 | `select_relic`, `skip_relic_selection` | `choice.index` with relic fingerprints and an empty index list for skip | Direct/Event |
@@ -127,7 +127,7 @@ live game before acting, the call it makes, and the recorder context that settle
 | `combat.end_turn` | player side, not yet ended, `turn` matches | turn number | `PlayerCmd.EndTurn(player, canBackOut: false)` (recorded by `DirectEndTurnPatch`) | `combat.player_turn.start` / reward or run-end settle |
 | `map.choose` | map screen open (the driver first clicks the unrecorded Proceed button of a rest site, shop, treasure room, or event shop, or a finished event's synthetic PROCEED option, exactly as a player would) | travelable point at `(col,row)` | `NMapScreen.OnMapPointSelectedLocally(point)` | `room.enter` |
 | `act.next` | act-end surface | — | `ActChangeSynchronizer.SetLocalPlayerReady()` | `act.enter` |
-| `room.proceed` | terminal rewards screen, or the treasure room's enabled Proceed button after relic picking | not Crystal Sphere | `RunManager.ProceedFromTerminalRewardsScreen()` (treasure: force-click its Proceed button, which calls the same) | `reward.settled` / map open |
+| `room.proceed` | terminal rewards, treasure's enabled Proceed button, or an already open map after these | not Crystal Sphere; reward finalization requires adjacent `map.choose` | Finalization is paired with map travel; map opening is internal UI work. Stateful progression calls `RunManager.ProceedFromTerminalRewardsScreen()` immediately. | Adjacent finalization + map records; standalone progression retains its recorder acknowledgement |
 | `event.choose` | event room, options shown | `option_index` + `option_id`, unlocked | `EventSynchronizer.ChooseLocalOption(index)` | `event.choice.settled` / `room.enter` / `choice.offered` |
 | `event.advance` | ancient dialogue shown | `event_id` | dialogue hitbox click | `event.dialogue.settled` |
 | `event.crystal_sphere.set_tool` | Crystal Sphere screen open, minigame unfinished | semantic `small` or `big` tool is available | force-click the matching divination button | `event.crystal_sphere.tool` |
