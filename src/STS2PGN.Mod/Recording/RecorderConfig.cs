@@ -11,7 +11,8 @@ internal sealed record RecorderConfig(
     string OutputDirectory,
     int PlaybackTimeoutSeconds = RecorderConfig.DefaultPlaybackTimeoutSeconds,
     bool RecordPlaybackRuns = RecorderConfig.DefaultRecordPlaybackRuns,
-    PlaybackSpeedLevers FastPlayback = RecorderConfig.DefaultFastPlayback)
+    PlaybackSpeedLevers FastPlayback = RecorderConfig.DefaultFastPlayback,
+    bool RecordPartialRuns = RecordingSessionStartup.DefaultRecordPartialRuns)
 {
     public const string FileName = "STS2_PGN.config.json";
 
@@ -102,7 +103,9 @@ internal sealed record RecorderConfig(
                 fastPlayback = ReadFastPlayback(fastPlaybackElement, configPath);
             }
 
-            return new RecorderConfig(outputDirectory.GetString()!.Trim(), timeout, recordPlaybackRuns, fastPlayback);
+            bool recordPartialRuns = RecordingSessionStartup.ReadRecordPartialRuns(document.RootElement);
+            return new RecorderConfig(outputDirectory.GetString()!.Trim(), timeout, recordPlaybackRuns, fastPlayback,
+                recordPartialRuns);
         }
         catch (Exception exception)
         {
