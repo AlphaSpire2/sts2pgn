@@ -100,7 +100,8 @@ internal sealed class RecordingSession : IDisposable
 
     /// <summary>
     /// Continues the incomplete trace recorded for the same run when one can be found
-    /// and safely appended to; returns null so the caller can fall back to a new trace.
+    /// and safely appended to; returns null so the caller can skip recording or,
+    /// when explicitly configured, fall back to a new partial trace.
     /// </summary>
     public static RecordingSession? TryResume(RunState state, RecorderConfig config, SerializableRun save)
     {

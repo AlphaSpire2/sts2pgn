@@ -16,7 +16,7 @@ Legend:
 | STS2PGN kind | Authoritative source | Strategy | Status |
 |---|---|---|---|
 | `run.start` | `Core.Runs/RunManager.cs`: `RunStarted`, `ToSave` | Subscribe after launch; capture exact and portable initial state. | Event |
-| `run.resume` | `RunManager.SetUpSavedSingleplayer` (prefix captures the restored `SerializableRun`) | Continue the run's incomplete trace when `GameStartTime`/seed/build headers match, removing a crash-truncated final line first; re-anchor with the restored snapshot, portable `run.core` state, and a `run.resume` observation. Fall back to a fresh trace when no file can be safely continued. Multiplayer remains out of v1 scope. | Direct |
+| `run.resume` | `RunManager.SetUpSavedSingleplayer` (prefix captures the restored `SerializableRun`) | Continue the run's incomplete trace when `GameStartTime`/seed/build headers match, removing a crash-truncated final line first; re-anchor with the restored snapshot, portable `run.core` state, and a `run.resume` observation. If no file can be safely continued, skip recording and log the reason by default; `record_partial_runs: true` permits a fresh partial trace for diagnostics. Multiplayer remains out of v1 scope. | Direct |
 | `run.finish` | `RunManager.OnEnded` and abandonment path | Record final state/result before cleanup; distinguish victory, defeat, abandonment. | Direct |
 | `act.enter` | `RunManager.ActEntered` | Observe new act after its state is initialized. | Event |
 | `act.next` | `NetVoteToMoveToNextActAction` | Record accepted synchronized action. | Direct |

@@ -5,6 +5,10 @@ STS2PGN records Slay the Spire 2 runs as deterministic, human-readable traces in
 The long-term purpose is simulator conformance testing: record a run in the real game, feed the resulting `.sts2pgn` file to an external simulator, replay the same decisions, and identify the first state difference between the simulator and STS2.
 
 > [!IMPORTANT]
+> Recorder **0.12.0** skips recording resumed runs when no matching earlier trace is available.
+> Set `record_partial_runs` to `true` to retain these partial recordings for diagnostics.
+> New runs and continuations of matching traces are still recorded normally.
+>
 > Recorder **0.11.0** records terminal reward/treasure finalization once, immediately before
 > committed `map.choose`. Opening or closing the map is presentation-only, so taking a reward
 > after inspecting the map remains in the reward phase. Playback drives the finalization and
@@ -181,7 +185,7 @@ STS2_PGN.config.json
 
 The game requires the manifest filename to match the mod ID. The source manifest is named `mod_manifest.json`, but the build output renames it to `STS2_PGN.json`.
 
-The mod starts a trace when a supported single-player run launches. By default, traces are stored in the `sts2pgn/` directory under the user's system Documents directory. Metadata and every accepted action are flushed through to disk immediately, so a crash or save-and-quit leaves a parseable incomplete prefix.
+The mod starts a trace when a new supported single-player run launches and continues a matching local trace when a run resumes. By default, traces are stored in the `sts2pgn/` directory under the user's system Documents directory. Metadata and every accepted action are flushed through to disk immediately, so a crash or save-and-quit leaves a parseable incomplete prefix.
 
 Finished runs are automatically compressed to `.sts2pgn.gz`. After finalizing the
 result, the recorder writes and flushes a temporary gzip file, verifies that its
@@ -199,6 +203,7 @@ The output directory is configured in `STS2_PGN.config.json`, installed beside `
   "output_directory": "documents://sts2pgn",
   "playback_timeout_seconds": 30,
   "record_playback_runs": true,
+  "record_partial_runs": false,
   "fast_playback": true
 }
 ```
@@ -217,6 +222,15 @@ The output directory is configured in `STS2_PGN.config.json`, installed beside `
   without creating a trace file; playback reports are still written and their
   `recording_path` field is omitted. `sts2pgn handoff` always records because control returns to
   the player with that recording active.
+- `record_partial_runs` defaults to `false`, including when omitted or not a JSON boolean.
+  When a saved run resumes, the recorder first tries to continue a matching incomplete
+  trace in the configured output directory. If none can be continued, recording is
+  skipped for that session and the reason is logged. This can happen when a save is
+  transferred from another computer without its trace, or the output directory changes.
+  Set this option to `true` to create a partial recording from the loaded save for
+  diagnostics. Such a file lacks the earlier decisions required for full-run simulator
+  verification. New runs, matching continuations, and transient playback sessions are
+  unaffected. A recorder version change alone does not prevent continuation.
 
 The configuration is read when the mod initializes, so restart the game after changing it.
 

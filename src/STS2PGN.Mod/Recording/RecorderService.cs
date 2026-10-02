@@ -523,14 +523,22 @@ internal static class RecorderService
         _pendingResume = null;
         try
         {
-            _state = state;
             bool persist = !PlaybackService.IsActive
                 || PlaybackService.IsHandoffActive
                 || _config.RecordPlaybackRuns;
-            _session = persist && resume is not null
-                ? RecordingSession.TryResume(state, _config, resume.Save)
-                : null;
-            _session ??= RecordingSession.Start(state, _config, persist);
+            _session = RecordingSessionStartup.Open(
+                persist,
+                resume is null ? null : () => RecordingSession.TryResume(state, _config, resume.Save),
+                () => RecordingSession.Start(state, _config, persist),
+                _config.RecordPartialRuns);
+            if (_session is null)
+            {
+                GD.Print("[STS2PGN] Recording skipped: original trace unavailable for resumed run. "
+                    + "Set record_partial_runs to true to record partial runs for diagnostics.");
+                return;
+            }
+
+            _state = state;
             RoomStack.Clear();
             SeedRoomStack(state);
 
