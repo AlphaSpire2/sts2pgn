@@ -2,5 +2,6 @@
   "output_directory": "documents://sts2pgn",
   "playback_timeout_seconds": 30,
   "record_playback_runs": true,
-  "record_partial_runs": false
+  "record_partial_runs": false,
+  "playback_step_key": "F8"
 }

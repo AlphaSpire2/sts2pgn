@@ -54,6 +54,7 @@ internal sealed class PlaybackDriver
     private readonly TimeSpan _timeout;
     private readonly CancellationToken _cancellation;
     private readonly bool _waitForIdleAfterCompletion;
+    private readonly PlaybackStepGate? _steps;
     private readonly object _gate = new();
     // Arrival ticks order recorder events. Settling is "a completion boundary arrived after
     // this decision was recorded": some observations (turn boundaries, end-turn flushes)
@@ -69,13 +70,15 @@ internal sealed class PlaybackDriver
         PlaybackReport report,
         TimeSpan timeout,
         CancellationToken cancellation,
-        bool waitForIdleAfterCompletion = true)
+        bool waitForIdleAfterCompletion = true,
+        PlaybackStepGate? steps = null)
     {
         _script = script;
         _report = report;
         _timeout = timeout;
         _cancellation = cancellation;
         _waitForIdleAfterCompletion = waitForIdleAfterCompletion;
+        _steps = steps;
     }
 
     public async Task RunAsync()
@@ -276,6 +279,28 @@ internal sealed class PlaybackDriver
             return 0;
         }
 
+        if (_steps is not null)
+        {
+            // Only actual submissions wait. Automatic records, accumulated selections,
+            // and the recursive reward-departure/map pair do not consume extra presses.
+            await _steps.WaitAsync(decision.Ordinal + 1, _script.Decisions.Count,
+                DescribeStep(decision.Kind), _cancellation);
+            // The player may inspect or alter the live UI during the pause. Recheck
+            // before submitting rather than acting on a previously verified offer.
+            if (!SafeIsReady(dispatcher, decision))
+            {
+                _report.Stop(PlaybackStatus.StoppedAtRecord, PlaybackReasons.RecordedMismatch,
+                    "the decision surface changed while playback was paused", decision);
+                return 0;
+            }
+            verification = dispatcher.Verify(decision);
+            if (!verification.Ok)
+            {
+                _report.StopWithMismatch(decision, verification.Message, verification.Expected, verification.Offered);
+                return 0;
+            }
+        }
+
         long baseline = RecorderService.LastDecisionSequence ?? 0;
         try
         {
@@ -347,6 +372,25 @@ internal sealed class PlaybackDriver
 
         return 1;
     }
+
+    private static string DescribeStep(string kind) => kind switch
+    {
+        "combat.play_card" => "Play card",
+        "combat.end_turn" => "End turn",
+        "combat.use_potion" => "Use potion",
+        "combat.discard_potion" => "Discard potion",
+        "map.choose" => "Travel to next room",
+        "event.choose" => "Choose event option",
+        "rest.choose" => "Choose rest action",
+        "shop.purchase" => "Buy item",
+        "shop.remove_card" => "Remove card",
+        "reward.claim" => "Claim reward",
+        "reward.skip" => "Skip rewards",
+        "treasure.choose_relic" => "Choose relic",
+        "choice.index" or "choice.cards" => "Answer selection",
+        "room.proceed" => "Leave room",
+        _ => "Continue replay",
+    };
 
     private static bool SafeIsReady(IDecisionDispatcher dispatcher, ScriptDecision decision)
     {

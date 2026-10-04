@@ -50,6 +50,13 @@ internal static class PlaybackService
             return false;
         }
 
+        if (args.ManualSteps && (args.QuitWhenDone || args.HandoffWhenDone
+            || args.ScriptPaths.Count != 1 || PlaybackSpeed.IsHeadless))
+        {
+            error = "step requires one script in a visible game window";
+            return false;
+        }
+
         _active = args;
         _cancellation = new CancellationTokenSource();
         GD.Print($"[STS2PGN] Playback batch: {args.ScriptPaths.Count} script(s), quit when done: {args.QuitWhenDone}, handoff: {args.HandoffWhenDone}");
@@ -67,13 +74,16 @@ internal static class PlaybackService
         try
         {
             await PlaybackRunStarter.WaitForMainMenuAsync(cancellation);
-            PlaybackSpeed.Activate(RecorderService.Config.FastPlayback);
+            if (!args.ManualSteps)
+            {
+                PlaybackSpeed.Activate(RecorderService.Config.FastPlayback);
+            }
 
             outputDirectory = RecorderService.Config.ResolveOutputDirectory();
             foreach (string scriptPath in args.ScriptPaths)
             {
                 cancellation.ThrowIfCancellationRequested();
-                PlaybackReport report = await RunScriptAsync(scriptPath, args.HandoffWhenDone, cancellation);
+                PlaybackReport report = await RunScriptAsync(scriptPath, args.HandoffWhenDone, args.ManualSteps, cancellation);
                 report.FinishedAt = DateTimeOffset.UtcNow;
                 string reportPath = PlaybackReportWriter.Write(outputDirectory, report);
                 summary.Scripts.Add(new PlaybackSummaryRow(
@@ -118,6 +128,7 @@ internal static class PlaybackService
     private static async Task<PlaybackReport> RunScriptAsync(
         string scriptPath,
         bool handoffWhenDone,
+        bool manualSteps,
         CancellationToken cancellation)
     {
         PlaybackReport report = new() { Script = scriptPath };
@@ -158,12 +169,16 @@ internal static class PlaybackService
                 return report;
             }
 
+            using PlaybackStepGate? steps = manualSteps ? new PlaybackStepGate() : null;
+            using PlaybackStepOverlay? overlay = steps is null ? null
+                : new PlaybackStepOverlay(steps, RecorderService.Config.PlaybackStepKey);
             PlaybackDriver driver = new(
                 preflight.Script,
                 report,
                 TimeSpan.FromSeconds(RecorderService.Config.PlaybackTimeoutSeconds),
                 cancellation,
-                waitForIdleAfterCompletion: !handoffWhenDone);
+                waitForIdleAfterCompletion: !handoffWhenDone,
+                steps: steps);
             await driver.RunAsync();
 
             if (handoffWhenDone && report.Status == PlaybackStatus.Completed)
@@ -214,7 +229,8 @@ internal static class PlaybackService
                         RecorderService.StopIncomplete();
                     }
 
-                    await PlaybackRunStarter.ReturnToMainMenuAsync(cancellation);
+                    // Cancelling a manual wait must still let bounded cleanup finish.
+                    await PlaybackRunStarter.ReturnToMainMenuAsync(manualSteps ? CancellationToken.None : cancellation);
                 }
                 catch (Exception exception)
                 {
