@@ -11,7 +11,8 @@ namespace STS2PGN.Mod.Playback;
 internal sealed record PlaybackLaunchArgs(
     IReadOnlyList<string> ScriptPaths,
     bool QuitWhenDone,
-    bool HandoffWhenDone)
+    bool HandoffWhenDone,
+    bool ManualSteps = false)
 {
     public const string CommandLineKey = "sts2pgn-script";
 
@@ -32,15 +33,21 @@ internal sealed record PlaybackLaunchArgs(
         return new PlaybackLaunchArgs(Expand(value), QuitWhenDone: true, HandoffWhenDone: false);
     }
 
-    public static PlaybackLaunchArgs FromConsole(string path, bool handoffWhenDone = false)
+    public static PlaybackLaunchArgs FromConsole(string path, bool handoffWhenDone = false, bool manualSteps = false)
     {
+        if (manualSteps && (!File.Exists(Path.GetFullPath(path.Trim().Trim('"')))
+            || !Sts2PgnFile.IsTracePath(path.Trim().Trim('"'))))
+        {
+            throw new ArgumentException("step requires one .sts2pgn or .sts2pgn.gz file");
+        }
         IReadOnlyList<string> scripts = Expand(path);
         if (handoffWhenDone && scripts.Count != 1)
         {
             throw new ArgumentException("handoff requires exactly one script file");
         }
 
-        return new PlaybackLaunchArgs(scripts, QuitWhenDone: false, HandoffWhenDone: handoffWhenDone);
+        return new PlaybackLaunchArgs(scripts, QuitWhenDone: false, HandoffWhenDone: handoffWhenDone,
+            ManualSteps: manualSteps);
     }
 
     public static IReadOnlyList<string> Expand(string path)

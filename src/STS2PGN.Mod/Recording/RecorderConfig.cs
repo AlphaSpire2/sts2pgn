@@ -12,7 +12,8 @@ internal sealed record RecorderConfig(
     int PlaybackTimeoutSeconds = RecorderConfig.DefaultPlaybackTimeoutSeconds,
     bool RecordPlaybackRuns = RecorderConfig.DefaultRecordPlaybackRuns,
     PlaybackSpeedLevers FastPlayback = RecorderConfig.DefaultFastPlayback,
-    bool RecordPartialRuns = RecordingSessionStartup.DefaultRecordPartialRuns)
+    bool RecordPartialRuns = RecordingSessionStartup.DefaultRecordPartialRuns,
+    Key PlaybackStepKey = Key.F8)
 {
     public const string FileName = "STS2_PGN.config.json";
 
@@ -104,8 +105,19 @@ internal sealed record RecorderConfig(
             }
 
             bool recordPartialRuns = RecordingSessionStartup.ReadRecordPartialRuns(document.RootElement);
+            Key stepKey = Key.F8;
+            if (document.RootElement.TryGetProperty("playback_step_key", out JsonElement stepKeyElement))
+            {
+                if (stepKeyElement.ValueKind != JsonValueKind.String
+                    || !Enum.TryParse(stepKeyElement.GetString(), ignoreCase: true, out stepKey)
+                    || !Enum.IsDefined(stepKey))
+                {
+                    GD.PrintErr($"[STS2PGN] {configPath}: invalid playback_step_key; using F8");
+                    stepKey = Key.F8;
+                }
+            }
             return new RecorderConfig(outputDirectory.GetString()!.Trim(), timeout, recordPlaybackRuns, fastPlayback,
-                recordPartialRuns);
+                recordPartialRuns, stepKey);
         }
         catch (Exception exception)
         {

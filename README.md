@@ -204,6 +204,7 @@ The output directory is configured in `STS2_PGN.config.json`, installed beside `
   "playback_timeout_seconds": 30,
   "record_playback_runs": true,
   "record_partial_runs": false,
+  "playback_step_key": "F8",
   "fast_playback": true
 }
 ```
@@ -233,6 +234,12 @@ The output directory is configured in `STS2_PGN.config.json`, installed beside `
   unaffected. A recorder version change alone does not prevent continuation.
 
 The configuration is read when the mod initializes, so restart the game after changing it.
+
+`playback_step_key` sets the manual playback shortcut (default `F8`). Use a Godot key
+name such as `F8` or `None` to disable the shortcut and use only the overlay button.
+Invalid values fall back to `F8`. A key already used by the game's current bindings,
+known direct shortcuts, or debug shortcuts is disabled for playback; the overlay
+explains the conflict. Other mods with private input handlers may still conflict.
 
 The recorder captures the exact STS2 save snapshot, run/room/act lifecycle, map movement, combat actions, synchronized player choices, event and rest choices, rewards, treasure, shop operations, progression controls, and Crystal Sphere interactions. Asynchronous actions are written before any nested choice and followed by a correlated resolve record. Cards, rewards, model IDs, enums, actors, and offered index choices use portable semantic fingerprints. Crystal Sphere records its complete deterministically generated 11×11 board and post-generation RNG position as observational state, followed by tool changes and logical cell coordinates.
 
@@ -288,7 +295,36 @@ recording prefix:
 "Slay the Spire 2" --sts2pgn-script="C:\scripts\batch" --sts2pgn-out="C:\out\batch-1"
 ```
 
-or, from the in-game dev console, `sts2pgn drive <path>` (never quits). To drive a
+or, from the in-game dev console, `sts2pgn drive <path>` (never quits).
+
+To step through one supported recording or decision script in a visible game window:
+
+```text
+sts2pgn step <file.sts2pgn>
+```
+
+Compressed `.sts2pgn.gz` files are also accepted. Start from the main menu, then close
+the console. The overlay shows **Paused / Running**, the decision position, and the
+next action. Click **Next step** or press **F8** to submit one decision. Holding the
+key does not repeat steps, and presses while a step is running are not queued.
+The shortcut and button ignore input while the console or a text field is active.
+
+Manual playback pauses the driver, not the game clock: animations, enemy actions,
+and other automatic effects continue. A prompted selection requires another press.
+Reward finalization and its map destination are submitted together; intermediate
+multi-card selection records and automatic records need no extra press, so the
+displayed position can advance by more than one. Unrecorded presentation clicks
+needed to reach the next decision remain automatic. Waiting for a press has no
+timeout; normal readiness, submission, and settlement timeouts still apply. Manual
+playback uses normal presentation settings regardless of `fast_playback`.
+
+Inspecting state is fine; making gameplay decisions yourself can invalidate the
+script. The driver rechecks the offer after each pause and stops on a mismatch.
+On completion it writes the usual report and returns to the main menu. Use
+`sts2pgn cancel` to abort and abandon it. This mode does not support directories,
+lists, headless execution, handoff, or recordings containing `run.resume`.
+
+To drive a
 single partial script and then continue the same run manually, use:
 
 ```text

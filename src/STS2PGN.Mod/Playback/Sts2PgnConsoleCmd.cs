@@ -6,6 +6,7 @@ namespace STS2PGN.Mod.Playback;
 
 /// <summary>
 /// Dev-console entry point: <c>sts2pgn drive &lt;file|dir|list.txt&gt;</c> runs a playback batch;
+/// <c>sts2pgn step &lt;file&gt;</c> pauses before each decision for a button or key press;
 /// <c>sts2pgn handoff &lt;file&gt;</c> drives one partial script and leaves its run under player control;
 /// <c>sts2pgn cancel</c> stops and abandons an active playback. Discovered by the game's
 /// <c>ReflectionHelper.GetSubtypesInMods</c>, so it must be public with a parameterless constructor,
@@ -15,7 +16,7 @@ public sealed class Sts2PgnConsoleCmd : AbstractConsoleCmd
 {
     public override string CmdName => "sts2pgn";
 
-    public override string Args => "drive <file|dir|list.txt> | handoff <file> | cancel";
+    public override string Args => "drive <file|dir|list.txt> | step <file> | handoff <file> | cancel";
 
     public override string Description => "Drive STS2PGN scripts while recording, optionally handing the run to the player.";
 
@@ -38,6 +39,9 @@ public sealed class Sts2PgnConsoleCmd : AbstractConsoleCmd
             case "handoff":
                 return Start(args, handoffWhenDone: true);
 
+            case "step":
+                return Start(args, handoffWhenDone: false, manualSteps: true);
+
             case "cancel":
                 if (!PlaybackService.IsActive)
                 {
@@ -52,15 +56,15 @@ public sealed class Sts2PgnConsoleCmd : AbstractConsoleCmd
         }
     }
 
-    private static CmdResult Start(string[] args, bool handoffWhenDone)
+    private static CmdResult Start(string[] args, bool handoffWhenDone, bool manualSteps = false)
     {
-        string verb = handoffWhenDone ? "handoff" : "drive";
+        string verb = manualSteps ? "step" : handoffWhenDone ? "handoff" : "drive";
         if (args.Length < 2)
         {
             return new CmdResult(
                 success: false,
-                handoffWhenDone
-                    ? "handoff requires one script file"
+                handoffWhenDone || manualSteps
+                    ? $"{verb} requires one script file"
                     : "drive requires a script file, directory, or list path");
         }
 
@@ -68,8 +72,10 @@ public sealed class Sts2PgnConsoleCmd : AbstractConsoleCmd
         {
             PlaybackLaunchArgs launch = PlaybackLaunchArgs.FromConsole(
                 string.Join(' ', args.Skip(1)),
-                handoffWhenDone);
-            string started = handoffWhenDone
+                handoffWhenDone, manualSteps);
+            string started = manualSteps
+                ? "starting manual playback; close the console and use Next step or the configured shortcut"
+                : handoffWhenDone
                 ? "driving one script; control will be handed off after its last decision settles"
                 : $"driving {launch.ScriptPaths.Count} script(s)";
             return PlaybackService.TryStart(launch, out string error)

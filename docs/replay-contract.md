@@ -106,6 +106,16 @@ Launch:
   to the `.sts2pgn.gz` file. Incomplete and active handoff recordings remain plain.
 - The dev-console command `sts2pgn drive <path>` does the same interactively and never
   quits.
+- `sts2pgn step <file>` drives one supported recording or script in a visible window.
+  It waits indefinitely before each actual submission for the overlay button or the
+  configurable `playback_step_key` (`F8` by default). Automatic records and accumulated
+  selections do not consume a press; reward finalization and map travel remain one
+  submission. Nested choices each wait independently. Presses while busy are dropped,
+  key repeats are ignored, and cancelling releases a pending wait. The game clock is
+  not paused. Existing readiness/settlement timeouts and verification still apply;
+  the live offer is checked again after the manual wait. Fast playback is not enabled.
+  Conflicting game shortcuts and input while typing are not intercepted. Completion
+  and failure use the normal report/cleanup path; this is not a handoff mode.
 - `sts2pgn handoff <file>` accepts exactly one partial script. After its final decision
   settles successfully, the driver detaches without abandoning the run or stopping the
   recorder; subsequent player inputs continue the same authoritative recording. A
