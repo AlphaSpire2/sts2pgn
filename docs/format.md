@@ -151,6 +151,17 @@ preserved just like properties of a full observation.
 
 The final non-empty line contains one result token and has no sequence number. A prefix that ends after a complete record but has no terminal token is treated as incomplete with result `*`.
 
+### Gameplay victory semantics
+
+Starting with RecorderVersion 0.14.0, `VICTORY` denotes completion of combat
+against the last required boss, after combat-end effects settle. Double Boss
+requires the second boss. `run.finish` and its final `run.end` observation are
+written there; the Architect and subsequent presentation are not recorded.
+Earlier recordings use the later game UI boundary and may contain a
+post-victory tail. Consumers that exclude that tail must still verify final
+combat and expose the exclusion. Neither record syntax nor projection fields
+change, so format and projection versions remain unchanged.
+
 ## Common action envelope
 
 Action payloads use these common properties where applicable:

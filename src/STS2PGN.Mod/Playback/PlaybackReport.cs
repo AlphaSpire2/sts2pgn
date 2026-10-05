@@ -88,6 +88,15 @@ internal sealed class PlaybackReport
     [JsonPropertyName("decisions_total")]
     public int DecisionsTotal { get; set; }
 
+    [JsonPropertyName("post_victory_decisions")]
+    public int PostVictoryDecisions { get; set; }
+
+    [JsonPropertyName("gameplay_result")]
+    public string? GameplayResult { get; set; }
+
+    [JsonPropertyName("presentation_error")]
+    public string? PresentationError { get; set; }
+
     [JsonPropertyName("decisions_completed")]
     public int DecisionsCompleted { get; set; }
 
@@ -142,7 +151,7 @@ internal sealed class PlaybackSummary
     public List<PlaybackSummaryRow> Scripts { get; } = [];
 
     [JsonPropertyName("exit_code")]
-    public int ExitCode => Scripts.Count == 0 ? ExitGameError : Scripts.Max(row => ExitCodeFor(row.Status));
+    public int ExitCode => Scripts.Count == 0 ? ExitGameError : Scripts.Max(row => row.PresentationError is null ? ExitCodeFor(row.Status) : ExitGameError);
 
     [JsonPropertyName("finished_at")]
     public DateTimeOffset? FinishedAt { get; set; }
@@ -163,7 +172,8 @@ internal sealed record PlaybackSummaryRow(
     [property: JsonPropertyName("stopped_at_sequence")] long? StoppedAtSequence,
     [property: JsonPropertyName("recording_path")] string? RecordingPath,
     [property: JsonPropertyName("report_path")] string ReportPath,
-    [property: JsonPropertyName("handed_off")] bool HandedOff);
+    [property: JsonPropertyName("handed_off")] bool HandedOff,
+    [property: JsonPropertyName("presentation_error")] string? PresentationError = null);
 
 internal static class PlaybackReportWriter
 {

@@ -103,20 +103,21 @@ internal sealed class PlaybackDriver
                     continue;
                 }
 
+                int skippedBefore = _report.PostVictoryDecisions;
                 int completed = await DriveAsync(decision, nextDecision);
                 if (completed == 0)
                 {
                     return;
                 }
 
-                _report.DecisionsCompleted += completed;
+                _report.DecisionsCompleted += completed - (_report.PostVictoryDecisions - skippedBefore);
                 index += completed - 1;
             }
 
-            if (_waitForIdleAfterCompletion)
+            if (_waitForIdleAfterCompletion || RecorderService.GameplayVictoryPending)
             {
                 bool idle = await PlaybackWait.TryUntilAsync(
-                    () => LiveGame.IsIdle || !RecorderService.IsRecording,
+                    () => (LiveGame.IsIdle && !RecorderService.GameplayVictoryPending) || !RecorderService.IsRecording,
                     _timeout,
                     _cancellation);
                 if (!idle)
@@ -134,7 +135,8 @@ internal sealed class PlaybackDriver
 
             _report.Status = PlaybackStatus.Completed;
             _report.Reason = null;
-            _report.Message = $"all {_script.Decisions.Count} decisions settled";
+            _report.GameplayResult = RecorderService.GameplayVictoryRecorded ? "VICTORY" : null;
+            _report.Message = $"{_report.DecisionsCompleted} gameplay decisions settled; {_report.PostVictoryDecisions} post-victory decisions excluded";
         }
         finally
         {
@@ -146,6 +148,10 @@ internal sealed class PlaybackDriver
     private async Task<int> DriveAsync(
         ScriptDecision decision, ScriptDecision? nextDecision, ScriptDecision? departure = null)
     {
+        if (RecorderService.GameplayVictoryRecorded)
+        {
+            return ExcludePostVictoryDecision(decision);
+        }
         IDecisionDispatcher? dispatcher = Dispatchers.FirstOrDefault(candidate => candidate.Handles(decision.Kind));
         if (dispatcher is null)
         {
@@ -167,6 +173,14 @@ internal sealed class PlaybackDriver
         bool ready = await PlaybackWait.TryUntilAsync(
             () =>
             {
+                if (RecorderService.GameplayVictoryRecorded)
+                {
+                    return true;
+                }
+                if (RecorderService.GameplayVictoryPending)
+                {
+                    return false;
+                }
                 // A fight can proceed automatically while this wait is in progress,
                 // after the preceding card's action observation already settled.
                 // Consume that record before considering the parent event's loot
@@ -235,6 +249,11 @@ internal sealed class PlaybackDriver
 
             _lastMatchedDecisionSequence = automatic.Sequence;
             return 1;
+        }
+
+        if (RecorderService.GameplayVictoryRecorded)
+        {
+            return ExcludePostVictoryDecision(decision);
         }
 
         VerifyResult verification;
@@ -370,6 +389,18 @@ internal sealed class PlaybackDriver
 
         }
 
+        return 1;
+    }
+
+    private int ExcludePostVictoryDecision(ScriptDecision decision)
+    {
+        if (!PostVictoryDecisions.IsPresentation(decision.Kind, decision.Data))
+        {
+            _report.Stop(PlaybackStatus.StoppedAtRecord, PlaybackReasons.RecordedMismatch,
+                "script requests gameplay after final-boss victory", decision);
+            return 0;
+        }
+        _report.PostVictoryDecisions++;
         return 1;
     }
 

@@ -93,8 +93,13 @@ internal static class PlaybackService
                     report.StoppedAtSequence,
                     report.RecordingPath,
                     reportPath,
-                    report.HandedOff));
+                    report.HandedOff,
+                    report.PresentationError));
                 GD.Print($"[STS2PGN] Playback {Path.GetFileName(scriptPath)}: {report.Status} {report.Reason} {report.Message}");
+                if (report.PresentationError is not null)
+                {
+                    break; // Preserve the won live run; do not start another batch item over it.
+                }
             }
         }
         catch (Exception exception)
@@ -181,7 +186,8 @@ internal static class PlaybackService
                 steps: steps);
             await driver.RunAsync();
 
-            if (handoffWhenDone && report.Status == PlaybackStatus.Completed)
+            if (handoffWhenDone && report.Status == PlaybackStatus.Completed
+                && !RecorderService.GameplayVictoryRecorded)
             {
                 if (RunManager.Instance.IsInProgress && RecorderService.IsRecording)
                 {
@@ -224,9 +230,24 @@ internal static class PlaybackService
                     // ABANDONED result that was not produced by the script.
                     // A run that ended naturally has already stopped its
                     // recorder and retains its real VICTORY/DEFEAT result.
+                    if (RecorderService.GameplayVictoryPending)
+                    {
+                        await PlaybackWait.UntilAsync(
+                            () => !RecorderService.GameplayVictoryPending,
+                            TimeSpan.FromSeconds(90), "final-boss recording to settle", CancellationToken.None);
+                    }
                     if (RecorderService.IsRecording)
                     {
                         RecorderService.StopIncomplete();
+                    }
+
+                    if (RecorderService.GameplayVictoryRecorded)
+                    {
+                        report.GameplayResult = "VICTORY";
+                        // Presentation failures cannot rewrite a recorded victory.
+                        await PostVictoryPresentation.CompleteAsync(
+                            TimeSpan.FromSeconds(RecorderService.Config.PlaybackTimeoutSeconds),
+                            CancellationToken.None);
                     }
 
                     // Cancelling a manual wait must still let bounded cleanup finish.
@@ -234,6 +255,10 @@ internal static class PlaybackService
                 }
                 catch (Exception exception)
                 {
+                    if (RecorderService.GameplayVictoryRecorded || RecorderService.GameplayVictoryPending)
+                    {
+                        report.PresentationError = exception.Message;
+                    }
                     GD.PrintErr($"[STS2PGN] Playback: could not return to the main menu cleanly: {exception}");
                 }
             }

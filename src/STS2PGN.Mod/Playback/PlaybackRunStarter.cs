@@ -66,6 +66,11 @@ internal static class PlaybackRunStarter
         RunManager manager = RunManager.Instance;
         if (manager.IsInProgress && !manager.IsGameOver && !manager.IsAbandoned)
         {
+            if (STS2PGN.Mod.Recording.RecorderService.GameplayVictoryRecorded
+                || STS2PGN.Mod.Recording.RecorderService.GameplayVictoryPending)
+            {
+                throw new InvalidOperationException("Victory presentation is unfinished; refusing to abandon the won run.");
+            }
             manager.Abandon();
             await PlaybackWait.TryUntilAsync(
                 () => !manager.IsInProgress || manager.IsGameOver || manager.IsAbandoned,
