@@ -255,6 +255,13 @@ apply. Final gzip compression then reduces the completed file further.
 
 Each accepted record is appended and flushed immediately. A clean run end writes the authoritative terminal result, atomically updates the PGN-style `Result` header, and compresses the finalized recording. An interrupted run retains the existing plain-text prefix recovery behavior.
 
+Victory recordings end after the last required boss's combat effects settle
+(the second boss on Double Boss). The Architect is post-game presentation:
+playback completes it separately to preserve game history, without recording
+or verifying it. Legacy script tails are reported as excluded post-victory
+decisions; presentation errors are separate from the recorded gameplay result.
+See [the victory boundary](docs/replay-contract.md#gameplay-victory-boundary).
+
 ## Decision scripts and playback
 
 A *decision script* is a `.sts2pgn` file that proposes a run instead of recording one. It

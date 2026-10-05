@@ -24,6 +24,10 @@ internal static class RecorderService
 {
     private static RecordingSession? _session;
     private static RunState? _state;
+    private static CombatRoom? _victoryPending;
+    public static bool GameplayVictoryRecorded { get; private set; }
+    public static bool GameplayVictoryPending => _victoryPending is not null;
+
     private static RecorderConfig _config = new(RecorderConfig.DefaultOutputDirectory);
     private static readonly List<RoomTraceData> RoomStack = [];
     private static readonly Dictionary<(ulong PlayerId, uint ChoiceId), JsonElement> ChoiceOffers = [];
@@ -108,6 +112,53 @@ internal static class RecorderService
         {
             ExecuteSafely("closing trace", StopSession);
         }
+    }
+
+    private static void OnCombatWon(CombatRoom room)
+    {
+        if (_state is not { } state || _session is not { } session
+            || !GameplayVictory.IsFinalBoss(room.RoomType == RoomType.Boss,
+                state.CurrentActIndex, state.Acts.Count,
+                state.CurrentMapCoord == state.Map.BossMapPoint.coord,
+                state.Map.SecondBossMapPoint is not null,
+                state.Map.SecondBossMapPoint is { } second && state.CurrentMapCoord == second.coord))
+        {
+            return;
+        }
+        _victoryPending = room;
+        MegaCrit.Sts2.Core.Helpers.TaskHelper.RunSafely(FinishVictoryWhenSettledAsync(session));
+    }
+
+    private static async Task FinishVictoryWhenSettledAsync(RecordingSession session)
+    {
+        // CombatWon fires after the victory hooks, but before the enclosing
+        // action/turn and reward callbacks return. Preserve that final state.
+        await Task.Yield();
+        bool settled = await PlaybackWait.TryUntilAsync(
+            () => !ReferenceEquals(_session, session)
+                || (LiveGame.IsIdle && ActiveRewardSets.Count == 0),
+            TimeSpan.FromSeconds(90), CancellationToken.None);
+        if (settled && ReferenceEquals(_session, session))
+        {
+            ExecuteSafely("recording final-boss victory", FinishGameplayVictory);
+        }
+        else if (!settled && ReferenceEquals(_session, session))
+        {
+            GD.PushError("STS2PGN: final-boss victory did not settle; trace remains incomplete.");
+        }
+    }
+
+    private static void FinishGameplayVictory()
+    {
+        if (_victoryPending is null || _session is not { } session)
+        {
+            return;
+        }
+        ObserveAfter(_lastDecisionSequence, "action.settled");
+        JsonElement terminalState = session.CaptureState(BuildRecorderState());
+        session.Complete(RunResult.Victory, terminalState);
+        GameplayVictoryRecorded = true;
+        StopSession();
     }
 
     public static void StopIncomplete()
@@ -519,6 +570,8 @@ internal static class RecorderService
             return;
         }
 
+        GameplayVictoryRecorded = false;
+        _victoryPending = null;
         PendingResume? resume = _pendingResume;
         _pendingResume = null;
         try
@@ -552,6 +605,7 @@ internal static class RecorderService
             RunManager.Instance.ActionQueueSet.ActionEnqueued += OnActionEnqueued;
             RunManager.Instance.ActionExecutor.AfterActionExecuted += OnActionAfterExecuted;
             CombatManager.Instance.TurnStarted += OnTurnStarted;
+            CombatManager.Instance.CombatWon += OnCombatWon;
             CombatManager.Instance.TurnEnded += OnTurnEnded;
             CombatManager.Instance.PlayerUnendedTurn += OnPlayerUnendedTurn;
             RunManager.Instance.PlayerChoiceSynchronizer.PlayerChoiceReceived += OnPlayerChoiceReceived;
@@ -620,6 +674,14 @@ internal static class RecorderService
     private static void OnActionBeforeExecuted(GameAction action) =>
         ExecuteSafely("capturing game action", () =>
         {
+            // A queued departure must not move the recorded terminal state into
+            // post-game presentation before the idle poll gets its next turn.
+            if (_victoryPending is not null
+                && action.ToNetAction() is NetVoteToMoveToNextActAction)
+            {
+                FinishGameplayVictory();
+                return;
+            }
             long? before = _lastDecisionSequence;
             RecordAction(action);
             if (_lastDecisionSequence.HasValue && _lastDecisionSequence != before)
@@ -1047,6 +1109,7 @@ internal static class RecorderService
     private static void StopSession()
     {
         RewardDeparture.Clear();
+        _victoryPending = null;
         if (_session is null)
         {
             _state = null;
@@ -1073,6 +1136,7 @@ internal static class RecorderService
             RunManager.Instance.ActionQueueSet.ActionEnqueued -= OnActionEnqueued;
             RunManager.Instance.ActionExecutor.AfterActionExecuted -= OnActionAfterExecuted;
             CombatManager.Instance.TurnStarted -= OnTurnStarted;
+            CombatManager.Instance.CombatWon -= OnCombatWon;
             CombatManager.Instance.TurnEnded -= OnTurnEnded;
             CombatManager.Instance.PlayerUnendedTurn -= OnPlayerUnendedTurn;
             RunManager.Instance.PlayerChoiceSynchronizer.PlayerChoiceReceived -= OnPlayerChoiceReceived;

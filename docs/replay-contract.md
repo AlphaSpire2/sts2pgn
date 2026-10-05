@@ -160,7 +160,9 @@ Per script, in order:
    unmapped record kind (`unsupported_record`). Standard drive mode returns to the main
    menu. If the run is still active, it first closes the recording as an incomplete
    `Result "*"` prefix, then abandons only the unrecorded live run for cleanup; a run that
-   ended naturally keeps its real `VICTORY` or `DEFEAT`. Successful handoff mode instead
+   reached its gameplay victory boundary keeps `VICTORY`; a natural loss keeps
+   `DEFEAT`. Victory presentation runs separately before returning to the menu.
+   Successful handoff mode instead
    requires an active run and recorder, marks the report `handed_off: true`, detaches the
    driver, and leaves both active for normal play.
 
@@ -412,6 +414,34 @@ Consumers distinguish:
 - `state_divergence`: the action was applied but normalized state differs;
 - `result_divergence`: checkpoints matched until terminal outcome differed; and
 - `incomplete_trace`: valid crash-recovered prefix with result `*`.
+
+## Gameplay victory boundary
+
+Recorder 0.14.0 and later ends gameplay when combat against the last required
+boss has won and its enclosing action/turn, combat-end effects, and reward
+callbacks have settled. In a Double Boss act, the first boss is not terminal.
+The recorder writes `run.finish VICTORY`, captures the final gameplay state in
+`run.end`, and closes the recording before any departure into the Architect.
+The final observation retains the final boss room and surviving player health.
+The format grammar and projection version are unchanged.
+
+Playback completes gameplay at that same boundary. Legacy scripts may still
+contain final departure and Architect decisions; these are excluded after
+victory and counted separately as `post_victory_decisions`, never submitted as
+scripted gameplay. Any other gameplay decision after victory is a mismatch.
+Reports expose `gameplay_result` independently of presentation cleanup.
+
+After recording closes, a separate presentation driver completes the game's
+victory flow so its history, unlocks, and save cleanup retain the win. Its
+choices, dialogue length, state, and RNG are not conformance inputs. A failure
+here is reported as `presentation_error`; it cannot change the recorded win or
+cause the cleanup path to abandon the won run. Successful handoff remains for
+active gameplay only; a script that wins follows victory presentation instead.
+
+Replay consumers check final combat state before excluding older recordings'
+post-victory tails. Exclusion must not hide a pre-victory mismatch, manufacture
+a recorded result for an incomplete trace, or initialize from presentation
+state. Tail counts must remain visible in conformance reports.
 
 ## Phase 4 boundary policy
 
