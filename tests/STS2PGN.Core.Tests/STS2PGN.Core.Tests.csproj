@@ -27,6 +27,7 @@
   <ItemGroup>
     <Compile Include="../../src/STS2PGN.Mod/Recording/GameplayVictory.cs" Link="Recording/GameplayVictory.cs" />
     <!-- Exercise the actual recorder boundary without loading Godot/game assemblies. -->
+    <Compile Include="../../src/STS2PGN.Mod/Recording/CrystalSpherePayout.cs" Link="Recording/CrystalSpherePayout.cs" />
     <Compile Include="../../src/STS2PGN.Mod/Recording/RewardDeparture.cs" Link="Recording/RewardDeparture.cs" />
     <Compile Include="../../src/STS2PGN.Mod/Recording/RecordingSessionStartup.cs" Link="Recording/RecordingSessionStartup.cs" />
     <Compile Include="../../src/STS2PGN.Mod/Playback/PlaybackStepGate.cs" Link="Playback/PlaybackStepGate.cs" />

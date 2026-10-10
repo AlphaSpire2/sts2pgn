@@ -620,6 +620,12 @@ The turn-handover transition flags (`ending_player_turn_phase_one`, `ending_play
 
 Arrays with semantic identity are compared by key: `acts/index`, `players/slot`, `rooms/stack_depth`, `choices.player_choices/id`, `choices.rewards/id`, `run.map.points/id`, `combat.players/slot`, and `combat.creatures/combat_id`. All other arrays preserve gameplay order.
 
+Crystal Sphere's `event.crystal_sphere.click` observation captures the board after
+cell clearing. On the final divination, reward generation can still be pending.
+The matching `reward.offered` observation refreshes the minigame projection and
+RNG counter after generation, including for an empty reward set. These are distinct
+live checkpoints; the earlier snapshot is not replaced or relabelled as the payout.
+
 Recorder contexts currently include `run.resume`, `map.generated`, `choice.offered`, `action.settled`, `room.enter`, `room.exit`, `act.enter`, `combat.player_turn.start`, `combat.enemy_turn.start`, `combat.turn.end`, event/Crystal Sphere contexts, reward/rest/shop settled contexts, and `run.end`. The `after` field always references an earlier decision or lifecycle record; when an action contains a nested synchronized choice, it references the latest nested decision.
 
 ## Canonical JSON and hashing

@@ -45,7 +45,7 @@ internal static class RecorderService
     private static long? _pendingUndoEndTurnSequence;
     private static long? _pendingEventChoiceSequence;
     private static long? _pendingEventAdvanceSequence;
-    private static long? _pendingCrystalSphereSequence;
+    private static readonly CrystalSpherePayout CrystalSpherePayout = new();
     private static JsonElement? _specialEventState;
     private static PendingResume? _pendingResume;
     private static readonly Dictionary<(ulong PlayerId, uint ChoiceId), LiveChoiceOffer> LiveChoiceOffers = [];
@@ -196,42 +196,59 @@ internal static class RecorderService
         });
     }
 
-    public static void RecordCrystalSphereStart(object state, ulong playerId) => ExecuteSafely(
+    public static void RecordCrystalSphereStart(object minigame, ulong playerId, Func<object> project) => ExecuteSafely(
         "capturing Crystal Sphere initial state",
         () =>
         {
+            if (_session is null) return;
+            CrystalSpherePayout.Start(_session, minigame, playerId, project);
+            object state = project();
             _specialEventState = JsonSerializer.SerializeToElement(state);
             ObserveAfter(TryRecord("event.crystal_sphere.start", state, playerId), "event.crystal_sphere.start");
         });
 
-    public static void RecordCrystalSphereTool(string tool, object state) => ExecuteSafely(
+    public static void RecordCrystalSphereTool(object minigame, string tool, object state) => ExecuteSafely(
         "capturing Crystal Sphere tool state",
         () =>
         {
+            if (!CrystalSpherePayout.IsCurrent(_session, minigame)) return;
             _specialEventState = JsonSerializer.SerializeToElement(state);
             ObserveAfter(
                 TryRecord("event.crystal_sphere.set_tool", new { tool }, LocalPlayerId()),
                 "event.crystal_sphere.tool");
         });
 
-    public static void RecordCrystalSphereClick(int x, int y, string tool, int remainingBefore) => ExecuteSafely(
-        "capturing Crystal Sphere cell action",
-        () => _pendingCrystalSphereSequence = TryRecord(
-            "event.crystal_sphere.click",
-            new { x, y, tool, remaining_before = remainingBefore },
-            LocalPlayerId()));
+    public static long? RecordCrystalSphereClick(object minigame, int x, int y, string tool, int remainingBefore)
+    {
+        long? sequence = null;
+        ExecuteSafely("capturing Crystal Sphere cell action", () =>
+        {
+            if (!CrystalSpherePayout.IsCurrent(_session, minigame)) return;
+            sequence = TryRecord("event.crystal_sphere.click",
+                new { x, y, tool, remaining_before = remainingBefore }, LocalPlayerId());
+            if (sequence.HasValue)
+                CrystalSpherePayout.Clicked(_session, minigame, sequence.Value, remainingBefore);
+        });
+        return sequence;
+    }
 
-    public static void ObserveCrystalSphereClickSettled(object state) => ExecuteSafely(
+    public static void ObserveCrystalSphereClickSettled(object minigame, long? clickSequence, object state) => ExecuteSafely(
         "capturing settled Crystal Sphere cell state",
         () =>
         {
+            if (!CrystalSpherePayout.IsCurrent(_session, minigame)) return;
             _specialEventState = JsonSerializer.SerializeToElement(state);
-            long? sequence = _pendingCrystalSphereSequence.HasValue
-                ? Math.Max(_pendingCrystalSphereSequence.Value, _lastDecisionSequence ?? 0)
+            long? sequence = clickSequence.HasValue
+                ? Math.Max(clickSequence.Value, _lastDecisionSequence ?? 0)
                 : null;
             ObserveAfter(sequence, "event.crystal_sphere.click");
-            _pendingCrystalSphereSequence = null;
         });
+
+    public static IDisposable EnterCrystalSpherePayout(object minigame) =>
+        CrystalSpherePayout.EnterPayout(_session, minigame);
+
+    public static bool HasCompletedCrystalSpherePayout(long sequence) =>
+        CrystalSpherePayout.HasCompleted(_session, sequence);
 
     public static void RecordCrystalSphereProceed() =>
         TryRecord("event.crystal_sphere.proceed", new { }, LocalPlayerId());
@@ -338,7 +355,12 @@ internal static class RecorderService
             _lastCombatRoomWithRewards = combatRoom;
             RewardDeparture.Offered(combatRoom);
         }
-        ObserveAfter(_lastDecisionSequence, "reward.offered");
+        bool payout = CrystalSpherePayout.ObserveRewards(_session, set.Player.NetId, state =>
+        {
+            _specialEventState = JsonSerializer.SerializeToElement(state);
+            ObserveAfter(_lastDecisionSequence, "reward.offered");
+        });
+        if (!payout) ObserveAfter(_lastDecisionSequence, "reward.offered");
     }
 
     public static void EndRewardsSet(RewardsSet set)
@@ -616,7 +638,7 @@ internal static class RecorderService
             _pendingUndoEndTurnSequence = null;
             _pendingEventChoiceSequence = null;
             _pendingEventAdvanceSequence = null;
-            _pendingCrystalSphereSequence = null;
+            CrystalSpherePayout.Clear();
             _specialEventState = null;
             if (resume is not null)
             {
@@ -956,6 +978,7 @@ internal static class RecorderService
         if (data?.Model?.EndsWith("CRYSTAL_SPHERE", StringComparison.Ordinal) == true)
         {
             _specialEventState = null;
+            CrystalSpherePayout.Clear();
         }
 
         long? sequence = TryRecord("room.exit", data);
@@ -1126,7 +1149,7 @@ internal static class RecorderService
             _pendingUndoEndTurnSequence = null;
             _pendingEventChoiceSequence = null;
             _pendingEventAdvanceSequence = null;
-            _pendingCrystalSphereSequence = null;
+            CrystalSpherePayout.Clear();
             _specialEventState = null;
             return;
         }
@@ -1164,7 +1187,7 @@ internal static class RecorderService
         _pendingUndoEndTurnSequence = null;
         _pendingEventChoiceSequence = null;
         _pendingEventAdvanceSequence = null;
-        _pendingCrystalSphereSequence = null;
+        CrystalSpherePayout.Clear();
         _specialEventState = null;
     }
 

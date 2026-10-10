@@ -474,6 +474,20 @@ after the preceding card's action observation has arrived. The scripted proceed
 consumes that automatic record even if it arrived during the wait; it must not
 click the parent event's reward screen and produce a second proceed.
 
+Crystal Sphere's final divination waits for the generated reward offer from that
+same minigame, including an empty reward set. The board's click observation,
+unrelated observations, and readiness of a later decision do not release this
+wait. The recorder refreshes the board projection, including its RNG counter,
+before capturing `reward.offered`. Playback can then claim or skip those rewards;
+it does not wait for the reward screen to close before driving its choices.
+The usual playback timeout and cancellation still apply.
+
+Intermediate observations remain faithful snapshots of the live game. This
+ordering prevents playback from submitting its next decision during the payout
+delay; it does not rewrite older recordings or prevent a human player from
+interleaving input during that delay. Such traces still require a replay consumer
+that can represent a pending payout.
+
 A script may go directly from Crystal Sphere's final divination to `map.choose`.
 When the minigame is finished and its own Proceed button is enabled, playback
 clicks that button to leave the overlay. The real click is still recorded as
