@@ -539,7 +539,7 @@ internal static class CrystalSphereStartPatch
         CrystalSphereMinigame __instance,
         Player owner)
     {
-        RecorderService.RecordCrystalSphereStart(ProjectState(__instance), owner.NetId);
+        RecorderService.RecordCrystalSphereStart(__instance, owner.NetId, () => ProjectState(__instance));
     }
 
     internal static object ProjectState(CrystalSphereMinigame minigame) => new
@@ -596,6 +596,7 @@ internal static class CrystalSphereToolPatch
         CrystalSphereMinigame __instance,
         CrystalSphereMinigame.CrystalSphereToolType tool) =>
         RecorderService.RecordCrystalSphereTool(
+            __instance,
             CrystalSphereStartPatch.ToolName(tool),
             CrystalSphereStartPatch.ProjectState(__instance));
 }
@@ -604,23 +605,36 @@ internal static class CrystalSphereToolPatch
 internal static class CrystalSphereCellPatch
 {
     [HarmonyPrefix]
-    private static void Prefix(CrystalSphereMinigame __instance, CrystalSphereCell clickedCell) =>
-        RecorderService.ExecuteSafely("capturing Crystal Sphere click", () =>
-            RecorderService.RecordCrystalSphereClick(
-                clickedCell.X,
-                clickedCell.Y,
-                CrystalSphereStartPatch.ToolName(__instance.CrystalSphereTool),
-                __instance.DivinationCount));
+    private static void Prefix(CrystalSphereMinigame __instance, CrystalSphereCell clickedCell, out long? __state) =>
+        __state = RecorderService.RecordCrystalSphereClick(
+            __instance,
+            clickedCell.X,
+            clickedCell.Y,
+            CrystalSphereStartPatch.ToolName(__instance.CrystalSphereTool),
+            __instance.DivinationCount);
 
     [HarmonyPostfix]
-    private static void Postfix(CrystalSphereMinigame __instance, ref Task __result) =>
-        __result = ObserveWhenComplete(__result, __instance);
+    private static void Postfix(CrystalSphereMinigame __instance, long? __state, ref Task __result) =>
+        __result = ObserveWhenComplete(__result, __instance, __state);
 
-    private static async Task ObserveWhenComplete(Task click, CrystalSphereMinigame minigame)
+    private static async Task ObserveWhenComplete(Task click, CrystalSphereMinigame minigame, long? sequence)
     {
         await click;
-        RecorderService.ObserveCrystalSphereClickSettled(CrystalSphereStartPatch.ProjectState(minigame));
+        RecorderService.ObserveCrystalSphereClickSettled(minigame, sequence, CrystalSphereStartPatch.ProjectState(minigame));
     }
+}
+
+[HarmonyPatch(typeof(CrystalSphereMinigame), "CompleteMinigame")]
+internal static class CrystalSpherePayoutPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(CrystalSphereMinigame __instance, out IDisposable __state) =>
+        __state = RecorderService.EnterCrystalSpherePayout(__instance);
+
+    // Restore the caller's context when the async method returns its Task. Its
+    // continuations retain the payout scope until they offer the generated set.
+    [HarmonyFinalizer]
+    private static void Finalizer(IDisposable? __state) => __state?.Dispose();
 }
 
 [HarmonyPatch(typeof(NCrystalSphereScreen), "OnProceedButtonPressed")]

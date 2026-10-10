@@ -372,13 +372,17 @@ internal sealed class PlaybackDriver
             bool finalEndTurn = _waitForIdleAfterCompletion
                 && nextDecision is null
                 && decision.Kind == "combat.end_turn";
+            bool finalDivination = decision.Kind == "event.crystal_sphere.click"
+                && recorded.Value.Data.GetProperty("remaining_before").GetInt32() == 1;
             bool settled = await PlaybackWait.TryUntilAsync(
-                () => (finalEndTurn
-                        ? HasCompletedEnemyTurnAfter(recordedTick)
-                        : HasSettledAfter(recordedTick))
-                    || IsNextNestedDecisionReady(nextDecision)
-                    || ChoiceLeftNothingToSettle(decision)
-                    || !RecorderService.IsRecording,
+                () => !RecorderService.IsRecording
+                    || (finalDivination
+                        ? RecorderService.HasCompletedCrystalSpherePayout(recordedSequence)
+                        : (finalEndTurn
+                            ? HasCompletedEnemyTurnAfter(recordedTick)
+                            : HasSettledAfter(recordedTick))
+                          || IsNextNestedDecisionReady(nextDecision)
+                          || ChoiceLeftNothingToSettle(decision)),
                 _timeout,
                 _cancellation);
             if (!settled)
@@ -386,7 +390,12 @@ internal sealed class PlaybackDriver
                 _report.Stop(PlaybackStatus.GameError, PlaybackReasons.Timeout, $"{decision.Kind} was recorded as sequence {recordedSequence} but never settled", decision);
                 return 0;
             }
-
+            if (finalDivination && !RecorderService.HasCompletedCrystalSpherePayout(recordedSequence))
+            {
+                _report.Stop(PlaybackStatus.GameError, PlaybackReasons.Exception,
+                    "the recording ended before the Crystal Sphere payout was observed", decision);
+                return 0;
+            }
         }
 
         return 1;
