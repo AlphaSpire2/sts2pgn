@@ -150,6 +150,17 @@ internal sealed class CombatDispatcher : IDecisionDispatcher
                 offered);
         }
 
+        // An event that names potions by slot locks the belt until it finishes,
+        // and the game offers neither drinking nor discarding while it does.
+        // Playback submits potion actions directly, so it refuses them here.
+        if (!me.CanRemovePotions)
+        {
+            return VerifyResult.Mismatch(
+                "the belt is locked by the current event",
+                decision.Data,
+                new { can_remove_potions = false, potions });
+        }
+
         if (!ScriptDecisionReader.TryGetInt(decision.Data, "potion_slot", out int slot) || slot < 0 || slot >= me.PotionSlots.Count)
         {
             return VerifyResult.Mismatch("the scripted potion slot does not exist", decision.Data, offered);

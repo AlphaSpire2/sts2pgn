@@ -505,6 +505,11 @@ out-of-combat potion use or discard can run before the selection is answered.
 The driver requires a pending choice, an idle executor, and normal potion
 readiness; it does not wait for the suspended task to finish first.
 
+Playback submits potion actions directly rather than through the belt's
+buttons, so it checks the belt lock those buttons honor: while an event that
+names potions by slot is in progress, the player cannot drink or discard, and a
+scripted potion action there stops playback as a mismatch.
+
 An empty deck-enchantment choice bypasses the main confirm, whose handler does
 nothing when no card is selected. On a cancelable screen, playback emits the
 close button's Released signal so the screen's completion source resolves. On

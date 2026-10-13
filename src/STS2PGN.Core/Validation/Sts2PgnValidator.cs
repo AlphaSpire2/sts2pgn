@@ -636,6 +636,12 @@ public static class Sts2PgnValidator
                         location);
                 }
             }
+            else if (IsOutOfCombatPotion(entry))
+            {
+                // Out of combat the belt is used beside a waiting selection without answering it, so
+                // a choice already allowed stays allowed. A drink can still open a choice of its own.
+                choiceAllowed = choiceAllowed || ScriptProfile.SuspendableKinds.Contains(entry.Kind);
+            }
             else
             {
                 choiceAllowed = ScriptProfile.SuspendableKinds.Contains(entry.Kind);
@@ -841,6 +847,16 @@ public static class Sts2PgnValidator
 
     private static bool TryGetData(RunRecordEntry entry, out JsonElement data) =>
         entry.Payload.TryGetProperty("data", out data) && data.ValueKind == JsonValueKind.Object;
+
+    /// <summary>
+    /// True for a potion use or discard that explicitly declares it was made outside combat.
+    /// Potion records without <c>in_combat</c> keep the ordinary nested-choice rule.
+    /// </summary>
+    private static bool IsOutOfCombatPotion(RunRecordEntry entry) =>
+        entry.Kind is "combat.use_potion" or "combat.discard_potion"
+        && TryGetData(entry, out JsonElement data)
+        && data.TryGetProperty("in_combat", out JsonElement inCombat)
+        && inCombat.ValueKind == JsonValueKind.False;
 
     private static bool TryAddOfferIndex(JsonElement option, int expectedIndex, HashSet<int> indexes) =>
         option.ValueKind == JsonValueKind.Object
