@@ -266,6 +266,58 @@ public sealed class Sts2PgnValidatorScriptModeTests
         Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(issue => $"{issue.Code}@{issue.Location}")));
     }
 
+    private const string CardRewardClaim =
+        "{\"actor\":\"p0\",\"data\":{\"set_id\":0,\"reward_index\":1,\"reward\":{\"type\":\"card\"}}}";
+
+    private static string Potion(bool? inCombat) =>
+        "{\"actor\":\"p0\",\"data\":{\"potion_slot\":0,\"potion_model\":\"POTION.BLOOD_POTION\","
+        + "\"target_id\":null,\"target\":null"
+        + (inCombat is { } value ? $",\"in_combat\":{(value ? "true" : "false")}" : string.Empty)
+        + "}}";
+
+    [Theory]
+    [InlineData("combat.discard_potion")]
+    [InlineData("combat.use_potion")]
+    public void ScriptModeAllowsAnOutOfCombatPotionBesideAWaitingChoice(string potionKind)
+    {
+        RunRecord record = TestRecordFactory.CreateScriptBuilder()
+            .AppendJson("run.start", TestRecordFactory.ScriptRunStart)
+            .AppendJson("reward.claim", CardRewardClaim)
+            .AppendJson(potionKind, Potion(inCombat: false))
+            .AppendJson("choice.index", RewardChoice)
+            .Build();
+
+        Sts2PgnValidationResult result = ValidateScript(record);
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(issue => $"{issue.Code}@{issue.Location}")));
+    }
+
+    [Fact]
+    public void ScriptModeRejectsAChoiceAfterAnOutOfCombatDiscardWithNothingWaiting()
+    {
+        RunRecord record = TestRecordFactory.CreateScriptBuilder()
+            .AppendJson("run.start", TestRecordFactory.ScriptRunStart)
+            .AppendJson("combat.discard_potion", Potion(inCombat: false))
+            .AppendJson("choice.index", RewardChoice)
+            .Build();
+
+        Assert.Contains(ValidateScript(record).Errors, issue => issue.Code == "script_orphan_choice" && issue.Location == "sequence:3");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(null)]
+    public void ScriptModeRejectsAChoiceAfterADiscardNotDeclaredOutOfCombat(bool? inCombat)
+    {
+        RunRecord record = TestRecordFactory.CreateScriptBuilder()
+            .AppendJson("run.start", TestRecordFactory.ScriptRunStart)
+            .AppendJson("combat.play_card", PlayCard)
+            .AppendJson("combat.discard_potion", Potion(inCombat))
+            .AppendJson("choice.cards", CardChoice)
+            .Build();
+
+        Assert.Contains(ValidateScript(record).Errors, issue => issue.Code == "script_orphan_choice" && issue.Location == "sequence:4");
+    }
+
     [Fact]
     public void ScriptModeKeepsSharedContractChecks()
     {

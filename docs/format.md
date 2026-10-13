@@ -369,7 +369,9 @@ Records:
   follow an operation that can suspend for it (`combat.play_card`, `combat.use_potion`,
   `combat.end_turn` — the end-of-turn flush can ask which cards to keep — `event.choose`,
   `reward.claim`, `rest.choose`, `shop.purchase`, `shop.remove_card`,
-  `treasure.choose_relic`) or another `choice.*` (`script_orphan_choice`).
+  `treasure.choose_relic`) or another `choice.*` (`script_orphan_choice`). A potion
+  use or discard carrying `in_combat: false` may stand between them: outside combat
+  the belt is used beside a waiting selection without answering it.
 - Potion decisions may carry an optional boolean `in_combat`. The driver derives the
   submission context from the live game and treats this field as a precondition: when it
   is present and disagrees with the live state, playback stops as a mismatch. Producers
