@@ -79,7 +79,7 @@ internal static class PlaybackService
                 PlaybackSpeed.Activate(RecorderService.Config.FastPlayback);
             }
 
-            outputDirectory = RecorderService.Config.ResolveOutputDirectory();
+            outputDirectory = RecorderService.Config.ResolveOutputDirectory(playback: true);
             foreach (string scriptPath in args.ScriptPaths)
             {
                 cancellation.ThrowIfCancellationRequested();
@@ -116,7 +116,7 @@ internal static class PlaybackService
             int exitCode = summary.ExitCode;
             RecorderService.ExecuteSafely("writing playback summary", () =>
             {
-                string directory = outputDirectory ?? RecorderService.Config.ResolveOutputDirectory();
+                string directory = outputDirectory ?? RecorderService.Config.ResolveOutputDirectory(playback: true);
                 string path = PlaybackReportWriter.Write(directory, summary);
                 GD.Print($"[STS2PGN] Playback summary written to {path} (exit code {exitCode})");
             });

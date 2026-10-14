@@ -1,5 +1,6 @@
 {
   "output_directory": "documents://sts2pgn",
+  "playback_output_directory": "documents://sts2pgn/playback",
   "playback_timeout_seconds": 30,
   "record_playback_runs": true,
   "record_partial_runs": false,

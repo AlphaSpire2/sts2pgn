@@ -13,12 +13,13 @@ internal sealed record RecorderConfig(
     bool RecordPlaybackRuns = RecorderConfig.DefaultRecordPlaybackRuns,
     PlaybackSpeedLevers FastPlayback = RecorderConfig.DefaultFastPlayback,
     bool RecordPartialRuns = RecordingSessionStartup.DefaultRecordPartialRuns,
-    Key PlaybackStepKey = Key.F8)
+    Key PlaybackStepKey = Key.F8,
+    string PlaybackOutputDirectory = RecorderConfig.DefaultPlaybackOutputDirectory)
 {
     public const string FileName = "STS2_PGN.config.json";
 
     /// <summary>
-    /// <c>--sts2pgn-out=&lt;dir&gt;</c> overrides <c>output_directory</c> for one launch. Concurrent
+    /// <c>--sts2pgn-out=&lt;dir&gt;</c> overrides both output directories for one launch. Concurrent
     /// playback processes share the installed <see cref="FileName"/>, so this is how each one is
     /// given its own report and trace directory.
     /// </summary>
@@ -26,6 +27,8 @@ internal sealed record RecorderConfig(
     public const string DocumentsPrefix = "documents://";
     public const string ProfileFallbackOutputDirectory = "sts2pgn";
     public const string DefaultOutputDirectory = DocumentsPrefix + ProfileFallbackOutputDirectory;
+    public const string ProfileFallbackPlaybackOutputDirectory = "sts2pgn/playback";
+    public const string DefaultPlaybackOutputDirectory = DocumentsPrefix + ProfileFallbackPlaybackOutputDirectory;
     public const int DefaultPlaybackTimeoutSeconds = 30;
     public const bool DefaultRecordPlaybackRuns = true;
     /// <summary>
@@ -50,7 +53,7 @@ internal sealed record RecorderConfig(
         }
 
         GD.Print($"[STS2PGN] Output directory overridden on the command line: {overridden.Trim()}");
-        return config with { OutputDirectory = overridden.Trim() };
+        return config with { OutputDirectory = overridden.Trim(), PlaybackOutputDirectory = overridden.Trim() };
     }
 
     private static RecorderConfig LoadFile()
@@ -80,6 +83,20 @@ internal sealed record RecorderConfig(
             {
                 GD.PrintErr($"[STS2PGN] {configPath} needs a non-empty string 'output_directory'; using the default");
                 return Default();
+            }
+
+            string playbackOutputDirectory = DefaultPlaybackOutputDirectory;
+            if (document.RootElement.TryGetProperty("playback_output_directory", out JsonElement playbackDirectory))
+            {
+                if (playbackDirectory.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(playbackDirectory.GetString()))
+                {
+                    playbackOutputDirectory = playbackDirectory.GetString()!.Trim();
+                }
+                else
+                {
+                    GD.PrintErr($"[STS2PGN] {configPath}: 'playback_output_directory' must be a non-empty string; using the default");
+                }
             }
 
             int timeout = DefaultPlaybackTimeoutSeconds;
@@ -117,7 +134,7 @@ internal sealed record RecorderConfig(
                 }
             }
             return new RecorderConfig(outputDirectory.GetString()!.Trim(), timeout, recordPlaybackRuns, fastPlayback,
-                recordPartialRuns, stepKey);
+                recordPartialRuns, stepKey, playbackOutputDirectory);
         }
         catch (Exception exception)
         {
@@ -163,38 +180,41 @@ internal sealed record RecorderConfig(
         }
     }
 
-    public string ResolveOutputDirectory()
+    public string ResolveOutputDirectory(bool playback = false)
     {
-        if (OutputDirectory.StartsWith(DocumentsPrefix, StringComparison.Ordinal))
+        string outputDirectory = playback ? PlaybackOutputDirectory : OutputDirectory;
+        if (outputDirectory.StartsWith(DocumentsPrefix, StringComparison.Ordinal))
         {
-            return ResolveDocumentsOutputDirectory();
+            return ResolveDocumentsOutputDirectory(outputDirectory, playback
+                ? ProfileFallbackPlaybackOutputDirectory
+                : ProfileFallbackOutputDirectory);
         }
 
-        if (OutputDirectory.StartsWith("user://", StringComparison.Ordinal)
-            || OutputDirectory.StartsWith("res://", StringComparison.Ordinal))
+        if (outputDirectory.StartsWith("user://", StringComparison.Ordinal)
+            || outputDirectory.StartsWith("res://", StringComparison.Ordinal))
         {
-            return ProjectSettings.GlobalizePath(OutputDirectory);
+            return ProjectSettings.GlobalizePath(outputDirectory);
         }
 
-        if (Path.IsPathFullyQualified(OutputDirectory))
+        if (Path.IsPathFullyQualified(outputDirectory))
         {
-            return Path.GetFullPath(OutputDirectory);
+            return Path.GetFullPath(outputDirectory);
         }
 
-        string profilePath = SaveManager.Instance.GetProfileScopedPath(OutputDirectory);
+        string profilePath = SaveManager.Instance.GetProfileScopedPath(outputDirectory);
         return ProjectSettings.GlobalizePath(profilePath);
     }
 
-    private string ResolveDocumentsOutputDirectory()
+    private static string ResolveDocumentsOutputDirectory(string outputDirectory, string fallbackDirectory)
     {
         string documentsDirectory = Godot.OS.GetSystemDir(Godot.OS.SystemDir.Documents);
         if (string.IsNullOrWhiteSpace(documentsDirectory))
         {
             GD.PrintErr("[STS2PGN] Could not locate the system Documents directory; using the profile-scoped output directory");
-            return ResolveProfileFallbackOutputDirectory();
+            return ResolveProfileFallbackOutputDirectory(fallbackDirectory);
         }
 
-        string relativePath = OutputDirectory[DocumentsPrefix.Length..]
+        string relativePath = outputDirectory[DocumentsPrefix.Length..]
             .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         string documentsRoot = Path.GetFullPath(documentsDirectory);
         string resolvedPath = Path.GetFullPath(Path.Combine(documentsRoot, relativePath));
@@ -204,15 +224,15 @@ internal sealed record RecorderConfig(
             || relativeToDocuments.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
             || relativeToDocuments.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal))
         {
-            GD.PrintErr($"[STS2PGN] '{OutputDirectory}' escapes the system Documents directory; using the profile-scoped output directory");
-            return ResolveProfileFallbackOutputDirectory();
+            GD.PrintErr($"[STS2PGN] '{outputDirectory}' escapes the system Documents directory; using the profile-scoped output directory");
+            return ResolveProfileFallbackOutputDirectory(fallbackDirectory);
         }
 
         return resolvedPath;
     }
 
-    private static string ResolveProfileFallbackOutputDirectory() =>
-        ProjectSettings.GlobalizePath(SaveManager.Instance.GetProfileScopedPath(ProfileFallbackOutputDirectory));
+    private static string ResolveProfileFallbackOutputDirectory(string fallbackDirectory) =>
+        ProjectSettings.GlobalizePath(SaveManager.Instance.GetProfileScopedPath(fallbackDirectory));
 
     private static RecorderConfig Default() => new(DefaultOutputDirectory);
 }

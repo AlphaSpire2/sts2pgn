@@ -604,7 +604,7 @@ internal static class RecorderService
             _session = RecordingSessionStartup.Open(
                 persist,
                 resume is null ? null : () => RecordingSession.TryResume(state, _config, resume.Save),
-                () => RecordingSession.Start(state, _config, persist),
+                () => RecordingSession.Start(state, _config, persist, playback: PlaybackService.IsActive),
                 _config.RecordPartialRuns);
             if (_session is null)
             {
