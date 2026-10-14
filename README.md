@@ -331,6 +331,11 @@ start and end. Click **Next step** or press **F8** to submit one decision. Holdi
 key does not repeat steps, and presses while a step is running are not queued.
 The shortcut and button ignore input while the console or a text field is active.
 
+Click **Hide preview** to collapse the panel to a small **Show preview** tab in the
+upper right. The covered area becomes available for game clicks, and the configured
+step shortcut keeps working while collapsed. Click **Show preview** to restore the
+panel with the current actions. Each playback starts with the panel expanded.
+
 Manual playback pauses the driver, not the game clock: animations, enemy actions,
 and other automatic effects continue. A prompted selection requires another press.
 Reward finalization and its map destination are submitted together; intermediate

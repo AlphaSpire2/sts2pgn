@@ -23,6 +23,18 @@ internal sealed class PlaybackStepOverlay : IDisposable
 
     private readonly PlaybackStepGate _gate;
     private readonly CanvasLayer _layer = new() { Layer = 100 };
+    private readonly PanelContainer _panel = new() { CustomMinimumSize = new Vector2(420, 0) };
+    private readonly Button _hidePreview = new()
+    {
+        Text = "Hide preview",
+        FocusMode = Control.FocusModeEnum.None,
+    };
+    private readonly Button _showPreview = new()
+    {
+        Text = "Show preview",
+        FocusMode = Control.FocusModeEnum.None,
+        Visible = false,
+    };
     private readonly Label _status = new() { MouseFilter = Control.MouseFilterEnum.Ignore };
     private readonly string[] _actions;
     private readonly Label[] _actionRows = new Label[PlaybackStepContext.Radius * 2 + 1];
@@ -44,8 +56,7 @@ internal sealed class PlaybackStepOverlay : IDisposable
         NGame game = NGame.Instance ?? throw new InvalidOperationException("Game UI is unavailable.");
         _tree = game.GetTree();
         _inputManager = NInputManager.Instance;
-        PanelContainer panel = new() { CustomMinimumSize = new Vector2(420, 0) };
-        panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+        _panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
         {
             BgColor = new Color(0.06f, 0.07f, 0.09f, 0.72f),
             CornerRadiusTopLeft = 8,
@@ -53,11 +64,19 @@ internal sealed class PlaybackStepOverlay : IDisposable
             CornerRadiusBottomLeft = 8,
             CornerRadiusBottomRight = 8,
         });
-        panel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopRight);
-        panel.OffsetLeft = -440;
-        panel.OffsetRight = -20;
-        panel.OffsetTop = 90;
-        panel.GrowHorizontal = Control.GrowDirection.Begin;
+        _panel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopRight);
+        _panel.OffsetLeft = -440;
+        _panel.OffsetRight = -20;
+        _panel.OffsetTop = 90;
+        _panel.GrowHorizontal = Control.GrowDirection.Begin;
+        _showPreview.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopRight);
+        _showPreview.OffsetLeft = -180;
+        _showPreview.OffsetRight = -20;
+        _showPreview.OffsetTop = 90;
+        _showPreview.OffsetBottom = 122;
+        _showPreview.GrowHorizontal = Control.GrowDirection.Begin;
+        _showPreview.AddThemeFontSizeOverride("font_size", 16);
+        _hidePreview.AddThemeFontSizeOverride("font_size", 16);
         MarginContainer margin = new();
         foreach (string side in new[] { "left", "right", "top", "bottom" })
         {
@@ -65,6 +84,7 @@ internal sealed class PlaybackStepOverlay : IDisposable
         }
         VBoxContainer column = new();
         column.AddThemeConstantOverride("separation", 8);
+        column.AddChild(_hidePreview);
         column.AddChild(_status);
         Label context = new()
         {
@@ -90,9 +110,12 @@ internal sealed class PlaybackStepOverlay : IDisposable
         column.AddChild(_button);
         column.AddChild(_shortcutStatus);
         margin.AddChild(column);
-        panel.AddChild(margin);
-        _layer.AddChild(panel);
+        _panel.AddChild(margin);
+        _layer.AddChild(_panel);
+        _layer.AddChild(_showPreview);
         game.AddChild(_layer);
+        _hidePreview.Pressed += OnHidePreviewPressed;
+        _showPreview.Pressed += OnShowPreviewPressed;
         _button.Pressed += OnNextPressed;
         _gate.Changed += Refresh;
         _tree.ProcessFrame += UpdateAvailability;
@@ -182,6 +205,19 @@ internal sealed class PlaybackStepOverlay : IDisposable
         }
     }
 
+    private void OnHidePreviewPressed()
+    {
+        // Hide the whole control subtree so the covered game UI receives mouse input.
+        _panel.Hide();
+        _showPreview.Show();
+    }
+
+    private void OnShowPreviewPressed()
+    {
+        _showPreview.Hide();
+        _panel.Show();
+    }
+
     internal static bool HandleInput(InputEvent input)
     {
         if (_active is not { } overlay || overlay.InputBlocked
@@ -210,6 +246,8 @@ internal sealed class PlaybackStepOverlay : IDisposable
         }
         _gate.Changed -= Refresh;
         _button.Pressed -= OnNextPressed;
+        _hidePreview.Pressed -= OnHidePreviewPressed;
+        _showPreview.Pressed -= OnShowPreviewPressed;
         _layer.QueueFree();
     }
 }
