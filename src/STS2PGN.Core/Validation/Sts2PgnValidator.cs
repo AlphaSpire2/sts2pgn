@@ -367,6 +367,11 @@ public static class Sts2PgnValidator
 
             ValidateActionContract(entry, issues);
 
+            if (entry.Kind == "run.resume")
+            {
+                ValidateResumeRuntime(entry, issues);
+            }
+
             if (entry.Kind == "state.delta")
             {
                 AddError(issues, "undecoded_state_delta", "Wire deltas must be decoded by Sts2PgnParser before validation or replay.", $"sequence:{entry.Sequence}");
@@ -381,6 +386,25 @@ public static class Sts2PgnValidator
             {
                 ValidateResolve(entry, expectedActionKind, entriesBySequence, resolvedActions, issues);
             }
+        }
+    }
+
+    private static void ValidateResumeRuntime(RunRecordEntry entry, List<ValidationIssue> issues)
+    {
+        // Older recorders omitted runtime inputs; their traces remain readable.
+        if (!TryGetData(entry, out JsonElement data)
+            || !data.TryGetProperty("combat_runtime", out JsonElement runtime))
+        {
+            return;
+        }
+
+        if (runtime.ValueKind != JsonValueKind.Object
+            || !runtime.TryGetProperty("ending_player_turn_phase_two", out JsonElement phaseTwo)
+            || phaseTwo.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            AddError(issues, "invalid_resume_runtime",
+                "run.resume data.combat_runtime requires boolean ending_player_turn_phase_two.",
+                $"sequence:{entry.Sequence}");
         }
     }
 

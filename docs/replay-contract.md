@@ -216,6 +216,12 @@ Successful playback shows that the script was executable on the real game and yi
 recording that captured the run. It does not by itself validate a simulator; the replay
 of the recording does.
 
+Resume initialization also consumes `data.combat_runtime` when available. Its
+`ending_player_turn_phase_two` is explicit process state captured at the resume
+boundary, independent of the restored save and of later observations. Older
+resumes omit this input; consumers that need it must report unsupported input
+instead of inferring it from a prior turn checkpoint or a future observation.
+
 ## Record processing algorithm
 
 ```text

@@ -103,4 +103,46 @@ public sealed class Sts2PgnValidatorRunResumeTests
         StateObservationPayload observation = StateObservationFactory.Create(after, "run.resume", state.RootElement);
         return JsonSerializer.SerializeToElement(observation);
     }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ResumeRuntimeIsIndependentOfAbsentCombat(bool phaseTwo)
+    {
+        RunRecord record = TestRecordFactory.CreateBuilder()
+            .AppendJson("run.start", "{\"data\":{}}")
+            .Append("run.resume", JsonSerializer.SerializeToElement(new
+            {
+                data = new
+                {
+                    state = JsonSerializer.Deserialize<JsonElement>(ResumeState),
+                    combat_runtime = new { ending_player_turn_phase_two = phaseTwo },
+                },
+            }))
+            .Append("state.observe", ResumeObservation(after: 2))
+            .Build();
+
+        Assert.True(Sts2PgnValidator.Validate(record).IsValid);
+        Assert.Equal(phaseTwo, record.Entries[1].Payload.GetProperty("data")
+            .GetProperty("combat_runtime").GetProperty("ending_player_turn_phase_two").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("false")]
+    [InlineData("[]")]
+    [InlineData("{}")]
+    [InlineData("{\"ending_player_turn_phase_two\":null}")]
+    [InlineData("{\"ending_player_turn_phase_two\":0}")]
+    [InlineData("{\"ending_player_turn_phase_two\":\"false\"}")]
+    public void ValidatorRejectsMalformedResumeRuntimeEvenWithoutObservation(string runtime)
+    {
+        RunRecord record = TestRecordFactory.CreateBuilder()
+            .AppendJson("run.start", "{\"data\":{}}")
+            .AppendJson("run.resume", $"{{\"data\":{{\"combat_runtime\":{runtime}}}}}")
+            .Build();
+
+        Assert.Contains(Sts2PgnValidator.Validate(record).Errors,
+            issue => issue.Code == "invalid_resume_runtime" && issue.Location == "sequence:2");
+    }
 }
