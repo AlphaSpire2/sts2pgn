@@ -6,6 +6,7 @@ using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Debug;
 using STS2PGN.Mod.Recording;
+using STS2PGN.Scripting;
 
 namespace STS2PGN.Mod.Playback;
 
@@ -23,7 +24,8 @@ internal sealed class PlaybackStepOverlay : IDisposable
     private readonly PlaybackStepGate _gate;
     private readonly CanvasLayer _layer = new() { Layer = 100 };
     private readonly Label _status = new() { MouseFilter = Control.MouseFilterEnum.Ignore };
-    private readonly Label _next = new() { MouseFilter = Control.MouseFilterEnum.Ignore };
+    private readonly string[] _actions;
+    private readonly Label[] _actionRows = new Label[PlaybackStepContext.Radius * 2 + 1];
     private readonly Button _button = new() { FocusMode = Control.FocusModeEnum.None };
     private readonly Label _shortcutStatus = new()
     {
@@ -34,16 +36,25 @@ internal sealed class PlaybackStepOverlay : IDisposable
     private readonly NInputManager? _inputManager;
     private readonly Key _key;
 
-    public PlaybackStepOverlay(PlaybackStepGate gate, Key key)
+    public PlaybackStepOverlay(PlaybackStepGate gate, Key key, IReadOnlyList<ScriptDecision> decisions)
     {
         _gate = gate;
         _key = key;
+        _actions = decisions.Select(decision => PlaybackStepContext.Describe(decision.Kind, decision.Data)).ToArray();
         NGame game = NGame.Instance ?? throw new InvalidOperationException("Game UI is unavailable.");
         _tree = game.GetTree();
         _inputManager = NInputManager.Instance;
-        PanelContainer panel = new() { CustomMinimumSize = new Vector2(360, 0) };
+        PanelContainer panel = new() { CustomMinimumSize = new Vector2(420, 0) };
+        panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+        {
+            BgColor = new Color(0.06f, 0.07f, 0.09f, 0.72f),
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomLeft = 8,
+            CornerRadiusBottomRight = 8,
+        });
         panel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopRight);
-        panel.OffsetLeft = -380;
+        panel.OffsetLeft = -440;
         panel.OffsetRight = -20;
         panel.OffsetTop = 90;
         panel.GrowHorizontal = Control.GrowDirection.Begin;
@@ -55,7 +66,27 @@ internal sealed class PlaybackStepOverlay : IDisposable
         VBoxContainer column = new();
         column.AddThemeConstantOverride("separation", 8);
         column.AddChild(_status);
-        column.AddChild(_next);
+        Label context = new()
+        {
+            Text = "Previous 5 / Current / Next 5",
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        context.AddThemeFontSizeOverride("font_size", 16);
+        column.AddChild(context);
+        VBoxContainer actions = new();
+        actions.AddThemeConstantOverride("separation", 2);
+        for (int index = 0; index < _actionRows.Length; index++)
+        {
+            Label row = new()
+            {
+                MouseFilter = Control.MouseFilterEnum.Pass,
+                TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+            };
+            row.AddThemeFontSizeOverride("font_size", 16);
+            _actionRows[index] = row;
+            actions.AddChild(row);
+        }
+        column.AddChild(actions);
         column.AddChild(_button);
         column.AddChild(_shortcutStatus);
         margin.AddChild(column);
@@ -115,7 +146,20 @@ internal sealed class PlaybackStepOverlay : IDisposable
         string? conflict = ShortcutConflict();
         _status.Text = _gate.Position == 0 ? "Preparing playback"
             : $"{(_gate.IsWaiting ? "Paused" : "Running")} · Step {_gate.Position} of {_gate.Total}";
-        _next.Text = $"{(_gate.IsWaiting ? "Next" : "Action")}: {_gate.NextAction}";
+        IReadOnlyList<PlaybackActionRow> rows = PlaybackStepContext.Window(_actions, _gate.Position);
+        for (int index = 0; index < _actionRows.Length; index++)
+        {
+            Label label = _actionRows[index];
+            label.Visible = index < rows.Count;
+            if (index >= rows.Count) continue;
+            PlaybackActionRow row = rows[index];
+            bool current = row.Position == _gate.Position;
+            string marker = current ? (_gate.IsWaiting ? "Next ▶ " : "Now ▶ ") : "";
+            label.Text = $"{marker}{row.Position}. {row.Description}";
+            label.TooltipText = label.Text;
+            label.AddThemeColorOverride("font_color", current ? new Color(1f, 0.85f, 0.4f)
+                : row.Position < _gate.Position ? new Color(0.7f, 0.73f, 0.78f) : Colors.White);
+        }
         _button.Text = conflict is null ? $"Next step · {_key}" : "Next step";
         UpdateAvailability();
         _shortcutStatus.Text = conflict ?? "One press advances one decision";

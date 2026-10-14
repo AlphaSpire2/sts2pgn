@@ -303,7 +303,7 @@ internal sealed class PlaybackDriver
             // Only actual submissions wait. Automatic records, accumulated selections,
             // and the recursive reward-departure/map pair do not consume extra presses.
             await _steps.WaitAsync(decision.Ordinal + 1, _script.Decisions.Count,
-                DescribeStep(decision.Kind), _cancellation);
+                PlaybackStepContext.Describe(decision.Kind, decision.Data), _cancellation);
             // The player may inspect or alter the live UI during the pause. Recheck
             // before submitting rather than acting on a previously verified offer.
             if (!SafeIsReady(dispatcher, decision))
@@ -412,25 +412,6 @@ internal sealed class PlaybackDriver
         _report.PostVictoryDecisions++;
         return 1;
     }
-
-    private static string DescribeStep(string kind) => kind switch
-    {
-        "combat.play_card" => "Play card",
-        "combat.end_turn" => "End turn",
-        "combat.use_potion" => "Use potion",
-        "combat.discard_potion" => "Discard potion",
-        "map.choose" => "Travel to next room",
-        "event.choose" => "Choose event option",
-        "rest.choose" => "Choose rest action",
-        "shop.purchase" => "Buy item",
-        "shop.remove_card" => "Remove card",
-        "reward.claim" => "Claim reward",
-        "reward.skip" => "Skip rewards",
-        "treasure.choose_relic" => "Choose relic",
-        "choice.index" or "choice.cards" => "Answer selection",
-        "room.proceed" => "Leave room",
-        _ => "Continue replay",
-    };
 
     private static bool SafeIsReady(IDecisionDispatcher dispatcher, ScriptDecision decision)
     {

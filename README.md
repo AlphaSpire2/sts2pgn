@@ -322,8 +322,12 @@ sts2pgn step <file.sts2pgn>
 ```
 
 Compressed `.sts2pgn.gz` files are also accepted. Start from the main menu, then close
-the console. The overlay shows **Paused / Running**, the decision position, and the
-next action. Click **Next step** or press **F8** to submit one decision. Holding the
+the console. A fixed panel in the upper right has a translucent background and shows
+**Paused / Running**, the decision position, and up to five previous and five upcoming
+script actions around the highlighted current action. Rows include action details
+when available; hover over a clipped row to read its full text. The list follows
+script order, including grouped and automatic decisions, with fewer rows at the
+start and end. Click **Next step** or press **F8** to submit one decision. Holding the
 key does not repeat steps, and presses while a step is running are not queued.
 The shortcut and button ignore input while the console or a text field is active.
 
