@@ -52,7 +52,7 @@ internal sealed class RecordingSession : IDisposable
         IsContinuation = isContinuation;
     }
 
-    public static RecordingSession Start(RunState state, RecorderConfig config, bool persistToDisk = true)
+    public static RecordingSession Start(RunState state, RecorderConfig config, bool persistToDisk = true, bool playback = false)
     {
         ArgumentNullException.ThrowIfNull(config);
         DateTimeOffset startedAt = DateTimeOffset.UtcNow;
@@ -76,7 +76,7 @@ internal sealed class RecordingSession : IDisposable
         }
 
         string fileName = $"{startedAt:yyyyMMdd-HHmmss}-{runId:N}{FormatConstants.FileExtension}";
-        string outputDirectory = config.ResolveOutputDirectory();
+        string outputDirectory = config.ResolveOutputDirectory(playback);
         Directory.CreateDirectory(outputDirectory);
         string path = System.IO.Path.Combine(outputDirectory, fileName);
         FileStream file = new(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
@@ -107,15 +107,13 @@ internal sealed class RecordingSession : IDisposable
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(save);
-        string outputDirectory = config.ResolveOutputDirectory();
-        if (!Directory.Exists(outputDirectory))
-        {
-            return null;
-        }
-
+        // Handoff recordings stay in the playback directory after returning to player control.
+        string[] outputDirectories = [config.ResolveOutputDirectory(), config.ResolveOutputDirectory(playback: true)];
         Dictionary<ulong, string> playerSlots = BuildPlayerSlots(state);
-        foreach (string path in Directory
-            .EnumerateFiles(outputDirectory, $"*{FormatConstants.FileExtension}")
+        foreach (string path in outputDirectories
+            .Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
+            .Where(Directory.Exists)
+            .SelectMany(directory => Directory.EnumerateFiles(directory, $"*{FormatConstants.FileExtension}"))
             .OrderByDescending(File.GetLastWriteTimeUtc))
         {
             if (!HeaderMatchesResumedRun(path, state, playerSlots, save))

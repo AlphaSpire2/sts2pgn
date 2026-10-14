@@ -185,7 +185,10 @@ measured with `PresentationDelay`, a `SceneTreeTimer`, so they are denominated i
 the animation is, at any frame rate. Per-step timeouts stay on the wall clock. A trace recorded with
 any speed setting must be identical to one recorded without it; that equality is the acceptance test.
 
-Reports are written to the recorder's `output_directory`:
+Reports and playback recordings are written to `playback_output_directory`
+(default `documents://sts2pgn/playback`). The `--sts2pgn-out=<dir>` launch option
+overrides both this setting and the regular recording `output_directory`.
+Reports include:
 
 - `<script-name>.playback.json`: `status` (`completed`, `refused_at_start`,
   `stopped_at_record`, `game_error`), `reason`, `message`, `stopped_at_sequence`,

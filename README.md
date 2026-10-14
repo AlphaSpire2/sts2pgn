@@ -196,11 +196,12 @@ and interrupted runs remain plain `.sts2pgn` files for append and crash recovery
 Older recordings are not converted automatically. Consumers outside this repository
 must support gzip input or receive a decompressed copy.
 
-The output directory is configured in `STS2_PGN.config.json`, installed beside `STS2_PGN.dll`:
+The output directories are configured in `STS2_PGN.config.json`, installed beside `STS2_PGN.dll`:
 
 ```json
 {
   "output_directory": "documents://sts2pgn",
+  "playback_output_directory": "documents://sts2pgn/playback",
   "playback_timeout_seconds": 30,
   "record_playback_runs": true,
   "record_partial_runs": false,
@@ -209,11 +210,19 @@ The output directory is configured in `STS2_PGN.config.json`, installed beside `
 }
 ```
 
-- A `documents://` path is resolved beneath the user's system Documents directory.
+- `output_directory` stores regular recordings. `playback_output_directory` stores
+  playback recordings (including handoffs), per-script reports, and batch summaries.
+  An omitted, empty, or invalid `playback_output_directory` defaults to
+  `documents://sts2pgn/playback`, independently of `output_directory`.
+- Both settings accept the same path formats. A `documents://` path is resolved beneath the user's system Documents directory.
 - A relative directory such as `sts2pgn` is resolved beneath the active STS2 profile.
 - An absolute OS path writes directly to that directory.
 - A Godot path such as `user://my-replays` is converted to its native OS path.
-- A missing or invalid configuration uses `documents://sts2pgn`. If the system Documents directory cannot be located, the mod falls back to the profile-scoped `sts2pgn` directory and logs the reason.
+- A missing or invalid configuration uses `documents://sts2pgn` for regular recordings
+  and `documents://sts2pgn/playback` for playback files. If the system Documents directory
+  cannot be located, the mod falls back to the profile-scoped `sts2pgn` or
+  `sts2pgn/playback` directory respectively and logs the reason.
+- `--sts2pgn-out=<dir>` overrides both directories for one launch.
 
 - `playback_timeout_seconds` bounds how long the playback driver waits for any single step.
 - `fast_playback` drops presentation pacing for the duration of a playback batch. See
@@ -225,7 +234,9 @@ The output directory is configured in `STS2_PGN.config.json`, installed beside `
   the player with that recording active.
 - `record_partial_runs` defaults to `false`, including when omitted or not a JSON boolean.
   When a saved run resumes, the recorder first tries to continue a matching incomplete
-  trace in the configured output directory. If none can be continued, recording is
+  trace in both configured output directories, so handoff recordings can still be
+  continued after saving and restarting the game. Existing files stay in their original
+  directory. If none can be continued, recording is
   skipped for that session and the reason is logged. This can happen when a save is
   transferred from another computer without its trace, or the output directory changes.
   Set this option to `true` to create a partial recording from the loaded save for
@@ -297,7 +308,7 @@ recording prefix:
 # One script, a directory of scripts, or a .txt list (one path per line); quits with an exit code
 "Slay the Spire 2" --sts2pgn-script="C:\scripts\batch"
 
-# Optional: override STS2_PGN.config.json's output_directory for this launch only. Required when
+# Optional: override both output directories in STS2_PGN.config.json for this launch only. Required when
 # running several playback processes at once, because they all read the same installed config.
 "Slay the Spire 2" --sts2pgn-script="C:\scripts\batch" --sts2pgn-out="C:\out\batch-1"
 ```
@@ -363,7 +374,8 @@ same game-code path a player's input reaches, and wait for the recorder to recor
 settle it. A mismatch stops the script at that record with the expected and offered values
 — the first game-versus-simulator divergence.
 
-Reports go to the recorder's output directory: `<script>.playback.json` per script
+Reports go to `playback_output_directory` (default `Documents/sts2pgn/playback/`),
+alongside playback recordings: `<script>.playback.json` per script
 (`completed`, `refused_at_start`, `stopped_at_record`, or `game_error`, with the record,
 expected/offered values, recording path, the `handed_off` flag, and the profile's unlock
 state after a run that playback itself ends) and `playback-summary.json` for the batch.
