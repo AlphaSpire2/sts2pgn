@@ -176,7 +176,7 @@ internal static class PlaybackService
 
             using PlaybackStepGate? steps = manualSteps ? new PlaybackStepGate() : null;
             using PlaybackStepOverlay? overlay = steps is null ? null
-                : new PlaybackStepOverlay(steps, RecorderService.Config.PlaybackStepKey);
+                : new PlaybackStepOverlay(steps, RecorderService.Config.PlaybackStepKey, preflight.Script.Decisions);
             PlaybackDriver driver = new(
                 preflight.Script,
                 report,
