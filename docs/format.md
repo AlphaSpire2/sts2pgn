@@ -268,8 +268,7 @@ payload, exactly as it initializes from `run.start`:
 {
   "data": {
     "reloads": 1,
-    "recorder_version": "0.17.0",
-    "combat_runtime": { "ending_player_turn_phase_two": false },
+    "recorder_version": "0.8.0",
     "restored_pre_finished_room": false,
     "source_snapshot": { "schema_version": 16, "encoding": "sts2-save-json", "data": {} },
     "state": { "scope": "run.core" }
@@ -283,21 +282,12 @@ payload, exactly as it initializes from `run.start`:
   the `run.start` pattern.
 - `reloads` counts the run's resumes including this one; `restored_pre_finished_room`
   records whether the checkpoint carried a pre-finished room with unclaimed rewards.
-- `combat_runtime` contains process state that the save does not carry. Recorder
-  0.17.0 and later always write `ending_player_turn_phase_two` as a boolean read
-  directly from the combat manager when emitting `run.resume`, before room entry,
-  even when `state.combat` is null. This is a resume input, not a later verification
-  observation. It is the raw flag, without the won-combat observation normalization.
-  A cancelled handover can retain it in the same process; a new process starts
-  with it false. The preceding recorded checkpoint cannot distinguish those cases.
-
-`combat_runtime` is an additive payload field: format and projection versions do
-not change. Readers accept older resumes without it and validate its boolean when
-present. Omission means **unknown**, not false or a value inferred from the last
-turn observation. A simulator requiring this input must report such a resume as
-unsupported; it must not seed it from a later observation being verified. The
-per-resume `recorder_version` identifies the writer of that resume, since a trace
-can continue under a different recorder version than its original header.
+- The per-resume `recorder_version` identifies the writer of that resume, since a
+  trace can continue under a different recorder version than its original header.
+- Resumes written by recorder 0.17.x also carry
+  `combat_runtime.ending_player_turn_phase_two`, the game's turn-handover flag at
+  load. No gameplay reads that flag, so readers ignore the field; later recorders
+  do not write it.
 
 When no matching incomplete trace can be found or safely continued (missing file,
 malformed record, changed game build or model hash), the recorder falls back to a new
