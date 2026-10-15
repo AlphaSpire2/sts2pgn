@@ -678,10 +678,6 @@ internal static class RecorderService
         {
             reloads = resume.Save.NumReloads,
             recorder_version = STS2PgnMod.Version,
-            combat_runtime = new
-            {
-                ending_player_turn_phase_two = CombatManager.Instance.EndingPlayerTurnPhaseTwo,
-            },
             restored_pre_finished_room = resume.Save.PreFinishedRoom is not null,
             source_snapshot = sourceSnapshot,
             state = resumeState,
