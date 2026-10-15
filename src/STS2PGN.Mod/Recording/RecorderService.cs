@@ -37,6 +37,7 @@ internal static class RecorderService
     private static readonly RewardDeparture RewardDeparture = new();
     private static readonly Dictionary<ulong, long> PendingRestActions = [];
     private static readonly Dictionary<GameAction, long> ActionSequences = [];
+    private static readonly AcceptedCardPlay AcceptedCardPlay = new();
     private static readonly FieldInfo? CurrentRoomsField = typeof(RunState).GetField(
         "_currentRooms",
         BindingFlags.Instance | BindingFlags.NonPublic);
@@ -624,6 +625,7 @@ internal static class RecorderService
             _lastCombatRoomWithRewards = null;
             PendingRestActions.Clear();
             ActionSequences.Clear();
+            AcceptedCardPlay.Clear();
             RunManager.Instance.ActionQueueSet.ActionEnqueued += OnActionEnqueued;
             RunManager.Instance.ActionExecutor.AfterActionExecuted += OnActionAfterExecuted;
             CombatManager.Instance.TurnStarted += OnTurnStarted;
@@ -692,6 +694,25 @@ internal static class RecorderService
 
     private sealed record PendingResume(SerializableRun Save, string? SnapshotJson);
 
+    public static IDisposable EnterCardPlayExecution(PlayCardAction action) =>
+        AcceptedCardPlay.Enter(_session, action, action.NetCombatCard.ToCardModelOrNull());
+
+    public static void RecordAcceptedCardPlay(CardModel card) => ExecuteSafely(
+        "capturing accepted card play",
+        () => AcceptedCardPlay.Accept(_session, card, action =>
+        {
+            var play = (PlayCardAction)action;
+            long? sequence = TryRecord("combat.play_card", new
+            {
+                combat_card_index = play.NetCombatCard.CombatCardIndex,
+                card_model = play.CardModelId.ToString(),
+                card = PortablePayloads.CardFingerprint(card),
+                target_id = play.TargetId,
+                target = CombatTarget(play.TargetId),
+            }, play.OwnerId);
+            if (sequence.HasValue) ActionSequences[play] = sequence.Value;
+        }));
+
     private static void OnActionEnqueued(GameAction action)
     {
         action.BeforeExecuted += OnActionBeforeExecuted;
@@ -742,16 +763,8 @@ internal static class RecorderService
         ulong actor = action.OwnerId;
         switch (netAction)
         {
-            case NetPlayCardAction play:
-                CardModel? playedCard = play.card.ToCardModelOrNull();
-                TryRecord("combat.play_card", new
-                {
-                    combat_card_index = play.card.CombatCardIndex,
-                    card_model = play.modelId.ToString(),
-                    card = PortablePayloads.CardFingerprint(playedCard),
-                    target_id = play.targetId,
-                    target = CombatTarget(play.targetId),
-                }, actor);
+            // Card inputs are captured after acceptance, at resource spending.
+            case NetPlayCardAction:
                 break;
             case NetUsePotionAction potion:
                 TryRecord("combat.use_potion", new
@@ -1135,6 +1148,7 @@ internal static class RecorderService
 
     private static void StopSession()
     {
+        AcceptedCardPlay.Clear();
         RewardDeparture.Clear();
         _victoryPending = null;
         if (_session is null)

@@ -454,6 +454,18 @@ state. Tail counts must remain visible in conformance reports.
 
 ## Phase 4 boundary policy
 
+A manual card play is recorded only after hand membership, playability, and target
+validation succeed, immediately before resource spending. The capture is scoped to
+that explicit action across asynchronous target resolution. Attempts rejected or
+cancelled before acceptance emit neither `combat.play_card` nor a corresponding
+settled observation; automatic plays are effects of their initiating decision and do not emit another
+input. Accepted zero-cost plays are recorded normally. Recording precedes cost
+hooks and nested choices, preserving their association with the initiating play.
+Recorder 0.17.1 uses this acceptance boundary. Older recordings can contain rejected
+attempts; consumers must not silently discard arbitrary illegal actions or infer
+acceptance solely from an unchanged observation. This correction does not change
+the format or projection version or rewrite existing recordings.
+
 Ordinary queued actions are observed at `ActionExecutor.AfterActionExecuted`. Operations
 whose generic action finishes before their gameplay transition use later signals: map and
 room events for travel, combat turn events for end/undo turn, completed event-option tasks,

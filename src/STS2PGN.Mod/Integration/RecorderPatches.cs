@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent;
+using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
@@ -17,6 +18,31 @@ using MegaCrit.Sts2.Core.Saves;
 using STS2PGN.Mod.Recording;
 
 namespace STS2PGN.Mod.Integration;
+
+[HarmonyPatch(typeof(PlayCardAction), "ExecuteAction")]
+internal static class CardPlayExecutionPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(PlayCardAction __instance, out IDisposable? __state)
+    {
+        IDisposable? scope = null;
+        RecorderService.ExecuteSafely("tracking card play execution", () =>
+            scope = RecorderService.EnterCardPlayExecution(__instance));
+        __state = scope;
+    }
+
+    // The async method retains its execution context; restore the caller's
+    // context when it returns its Task, including synchronous failure paths.
+    [HarmonyFinalizer]
+    private static void Finalizer(IDisposable? __state) => __state?.Dispose();
+}
+
+[HarmonyPatch(typeof(CardModel), nameof(CardModel.SpendResources))]
+internal static class AcceptedCardPlayPatch
+{
+    [HarmonyPrefix]
+    private static void Prefix(CardModel __instance) => RecorderService.RecordAcceptedCardPlay(__instance);
+}
 
 [HarmonyPatch(typeof(RunState), nameof(RunState.CreateForNewRun))]
 internal static class NewRunProfilePatch
