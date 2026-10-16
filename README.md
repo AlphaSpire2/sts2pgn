@@ -88,11 +88,26 @@ the game. The most useful settings are:
 | `playback_step_key` | `"F8"` | Step shortcut; `"None"` uses only the overlay button. |
 | `record_playback_runs` | `true` | Save a new recording during playback. Handoff always records. |
 | `record_partial_runs` | `false` | Record a resumed save even when its earlier recording is missing. |
+| `auto_upload` | `false` | Automatically publish finalized recordings to alphaspire.dev. |
 
 Directory settings accept `documents://` paths or absolute paths. Relative paths
 are resolved under the active game profile. The two output directories are
 configured independently. If the step shortcut conflicts with a game binding,
 use the overlay button or choose another key.
+
+**Automatic uploads.** Set `"auto_upload": true` and restart the game to upload
+each newly finalized `.sts2pgn.gz` recording to [alphaspire.dev](https://alphaspire.dev).
+Uploaded recordings are publicly listed and downloadable, including the game
+state and profile data contained in the trace. This includes wins, losses,
+abandoned runs, and recorded playback runs. Save-and-quit does not upload an
+unfinished run; a resumed recording uploads when it ends. Existing files are
+not uploaded retroactively.
+
+Uploads run in the background and keep the local recording. The game log shows
+the replay link on success or a warning on failure. Each recording gets one
+attempt with a 60-second timeout; there is no automatic retry. Closing the game
+can interrupt an upload. If needed, upload the saved file manually on the website.
+Leaving `auto_upload` off (or omitting it) makes no upload requests.
 
 ## Limitations
 

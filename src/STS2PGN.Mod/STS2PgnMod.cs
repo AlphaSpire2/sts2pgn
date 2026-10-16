@@ -12,7 +12,7 @@ namespace STS2PGN.Mod;
 [ModInitializer(nameof(Initialize))]
 public static class STS2PgnMod
 {
-    public const string Version = "0.18.1";
+    public const string Version = "0.19.0";
 
     public static void Initialize()
     {
