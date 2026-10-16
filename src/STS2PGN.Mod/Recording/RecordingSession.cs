@@ -22,6 +22,7 @@ internal sealed class RecordingSession : IDisposable
     private readonly Dictionary<ulong, string> _playerSlots;
     private readonly IDisposable _streamResources;
     private readonly Sts2PgnStreamWriter _writer;
+    private readonly bool _autoUpload;
     private bool _disposed;
 
     /// <summary>The persisted trace path, or null for a playback-only transient session.</summary>
@@ -42,7 +43,8 @@ internal sealed class RecordingSession : IDisposable
         string? path,
         IDisposable streamResources,
         Sts2PgnStreamWriter writer,
-        bool isContinuation)
+        bool isContinuation,
+        bool autoUpload = RecordingUpload.DefaultAutoUpload)
     {
         _state = state;
         _playerSlots = playerSlots;
@@ -50,6 +52,7 @@ internal sealed class RecordingSession : IDisposable
         _streamResources = streamResources;
         _writer = writer;
         IsContinuation = isContinuation;
+        _autoUpload = autoUpload;
     }
 
     public static RecordingSession Start(RunState state, RecorderConfig config, bool persistToDisk = true, bool playback = false)
@@ -87,7 +90,8 @@ internal sealed class RecordingSession : IDisposable
                 NewLine = "\n",
             };
             Sts2PgnStreamWriter writer = new(text, metadata);
-            RecordingSession session = new(state, playerSlots, path, file, writer, isContinuation: false);
+            RecordingSession session = new(state, playerSlots, path, file, writer, isContinuation: false,
+                autoUpload: config.AutoUpload);
             session.RecordRunStart(save);
             return session;
         }
@@ -141,7 +145,8 @@ internal sealed class RecordingSession : IDisposable
                     path,
                     continuation,
                     continuation.Writer,
-                    isContinuation: true)
+                    isContinuation: true,
+                    autoUpload: config.AutoUpload)
                 {
                     RunStartSequence = continuation.Prefix.Entries[^1].Sequence,
                 };
@@ -223,6 +228,9 @@ internal sealed class RecordingSession : IDisposable
             {
                 Path = Sts2PgnFileFinalizer.FinalizeRecording(Path, result,
                     exception => Godot.GD.PushWarning($"STS2PGN: recording saved, but metadata indexing failed: {exception.Message}"));
+                _ = RecordingUpload.Queue(Path, _autoUpload,
+                    message => Godot.GD.Print($"[STS2PGN] {message}"),
+                    message => Godot.GD.PushWarning($"STS2PGN: {message}"));
             }
         }
     }

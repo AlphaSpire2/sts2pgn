@@ -31,6 +31,7 @@
     <Compile Include="../../src/STS2PGN.Mod/Recording/CrystalSpherePayout.cs" Link="Recording/CrystalSpherePayout.cs" />
     <Compile Include="../../src/STS2PGN.Mod/Recording/RewardDeparture.cs" Link="Recording/RewardDeparture.cs" />
     <Compile Include="../../src/STS2PGN.Mod/Recording/RecordingSessionStartup.cs" Link="Recording/RecordingSessionStartup.cs" />
+    <Compile Include="../../src/STS2PGN.Mod/Recording/RecordingUpload.cs" Link="Recording/RecordingUpload.cs" />
     <Compile Include="../../src/STS2PGN.Mod/Playback/PlaybackStepGate.cs" Link="Playback/PlaybackStepGate.cs" />
     <Compile Include="../../src/STS2PGN.Mod/Playback/PlaybackStepContext.cs" Link="Playback/PlaybackStepContext.cs" />
     <None Include="../../examples/minimal.sts2pgn" Link="examples/minimal.sts2pgn" CopyToOutputDirectory="PreserveNewest" />
